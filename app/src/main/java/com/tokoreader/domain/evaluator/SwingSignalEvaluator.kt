@@ -1,9 +1,10 @@
 package com.tokoreader.domain.evaluator
 
+import com.tokoreader.domain.indicator.AdxCalculator
 import com.tokoreader.domain.indicator.AtrCalculator
 import com.tokoreader.domain.indicator.EmaCalculator
-import com.tokoreader.domain.indicator.MacdCalculator
 import com.tokoreader.domain.indicator.RsiCalculator
+import com.tokoreader.domain.indicator.VolumeCalculator
 import com.tokoreader.domain.model.Kline
 import com.tokoreader.domain.model.Position
 import com.tokoreader.domain.model.TradingSignal
@@ -16,6 +17,7 @@ class SwingSignalEvaluator : TradingSignalEvaluator {
         val ema200 = EmaCalculator.calculate(candles, 200)
         val rsi = RsiCalculator.calculate(candles, 14)
         val atr = AtrCalculator.calculate(candles, 14)
+        val adx = AdxCalculator.calculate(candles, 14)
 
         val lastIndex = candles.size - 1
         
@@ -23,33 +25,39 @@ class SwingSignalEvaluator : TradingSignalEvaluator {
         val currentEma200 = ema200[lastIndex]
         val currentRsi = rsi[lastIndex]
         val currentAtr = atr[lastIndex]
+        val currentAdx = adx[lastIndex]
         val currentPrice = candles[lastIndex].close
 
         val isUptrend = currentEma50 > currentEma200
         val isOversoldRebound = currentRsi > 30 && rsi[lastIndex - 1] <= 30
+        
+        // ADX Trend Filter
+        val isAdxConfirmed = currentAdx.adx >= 20.0 && currentAdx.plusDi > currentAdx.minusDi
+        
+        // Volume Filter
+        val isVolumeConfirmed = VolumeCalculator.isVolumeSurge(candles, period = 20, multiplier = 1.0)
 
         if (position == null || position.quantity <= 0.0) {
-            // Context: Buy
-            if (isUptrend && isOversoldRebound) {
-                return TradingSignal.ReadyToBuy("Uptrend + RSI Oversold Rebound", currentPrice)
+            // Context: Buy Signal
+            if (isUptrend && isOversoldRebound && (isAdxConfirmed || isVolumeConfirmed)) {
+                return TradingSignal.ReadyToBuy("EMA 50/200 Uptrend + RSI Rebound + ADX/Vol Confirm", currentPrice)
             }
             return TradingSignal.MonitoringBuy
         } else {
-            // Context: Sell
-            // Use ATR for stop loss trailing roughly
+            // Context: Sell Signal (Dynamic ATR SL/TP)
             val atrStopLoss = position.averageEntryPrice - (currentAtr * 2.0)
+            val atrTakeProfit = position.averageEntryPrice + (currentAtr * 4.0)
             
             if (currentPrice <= atrStopLoss) {
                 return TradingSignal.StopLossHit
             }
 
-            val profitPct = (currentPrice - position.averageEntryPrice) / position.averageEntryPrice
-            if (profitPct >= 0.05) { // 5% Take Profit for Swing
-                return TradingSignal.ReadyToSell("TP 5% Hit", currentPrice)
+            if (currentPrice >= atrTakeProfit) {
+                return TradingSignal.ReadyToSell("Dynamic ATR Swing TP (4x ATR) Hit", currentPrice)
             }
 
             if (currentEma50 < currentEma200 || currentRsi > 70) {
-                return TradingSignal.ReadyToSell("Trend Reversal / RSI Overbought", currentPrice)
+                return TradingSignal.ReadyToSell("Trend Reversal / RSI Overbought (>70)", currentPrice)
             }
 
             return TradingSignal.MonitoringSell

@@ -74,7 +74,7 @@ class MarketDataRepositoryImpl(
         // 1. Initial historical candles load from REST
         launch(Dispatchers.IO) {
             try {
-                val initial = getKlines(symbol, timeframe, 50)
+                val initial = getKlines(symbol, timeframe, 250)
                 if (initial.isNotEmpty()) {
                     synchronized(candlesList) {
                         candlesList.clear()
@@ -136,14 +136,16 @@ class MarketDataRepositoryImpl(
                                     candlesList[lastIdx] = liveKline
                                 } else {
                                     candlesList.add(liveKline)
-                                    if (candlesList.size > 50) {
+                                    if (candlesList.size > 250) {
                                         candlesList.removeAt(0)
                                     }
                                 }
                             }
                             trySend(candlesList.toList())
                         }
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error parsing kline WS message: ${e.message}")
+                    }
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -165,7 +167,7 @@ class MarketDataRepositoryImpl(
             delay(5000)
             while (isActive && !isClosedChannel.get()) {
                 try {
-                    val fresh = getKlines(symbol, timeframe, 50)
+                    val fresh = getKlines(symbol, timeframe, 250)
                     if (fresh.isNotEmpty()) {
                         synchronized(candlesList) {
                             candlesList.clear()

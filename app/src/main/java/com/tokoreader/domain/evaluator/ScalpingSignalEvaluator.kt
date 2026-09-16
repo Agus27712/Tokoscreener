@@ -1,7 +1,9 @@
 package com.tokoreader.domain.evaluator
 
+import com.tokoreader.domain.indicator.AtrCalculator
 import com.tokoreader.domain.indicator.EmaCalculator
 import com.tokoreader.domain.indicator.RsiCalculator
+import com.tokoreader.domain.indicator.VolumeCalculator
 import com.tokoreader.domain.model.Kline
 import com.tokoreader.domain.model.Position
 import com.tokoreader.domain.model.TradingSignal
@@ -12,11 +14,12 @@ interface TradingSignalEvaluator {
 
 class ScalpingSignalEvaluator : TradingSignalEvaluator {
     override fun evaluate(candles: List<Kline>, position: Position?): TradingSignal {
-        if (candles.size < 21) return TradingSignal.NotHolding // Not enough data
+        if (candles.size < 21) return TradingSignal.NotHolding // Need at least 21 candles
 
         val emaFast = EmaCalculator.calculate(candles, 9)
         val emaSlow = EmaCalculator.calculate(candles, 21)
         val rsi = RsiCalculator.calculate(candles, 9)
+        val atr = AtrCalculator.calculate(candles, 14)
 
         val lastIndex = candles.size - 1
         val prevIndex = lastIndex - 1
@@ -26,34 +29,37 @@ class ScalpingSignalEvaluator : TradingSignalEvaluator {
         val prevEmaFast = emaFast[prevIndex]
         val prevEmaSlow = emaSlow[prevIndex]
         val currentRsi = rsi[lastIndex]
+        val currentAtr = atr[lastIndex]
         
         val currentPrice = candles[lastIndex].close
 
-        // Cross Up
+        // Cross Up & Cross Down
         val isGoldenCross = prevEmaFast <= prevEmaSlow && currentEmaFast > currentEmaSlow
-        // Cross Down
         val isDeathCross = prevEmaFast >= prevEmaSlow && currentEmaFast < currentEmaSlow
 
+        // Volume Filter
+        val isVolumeConfirmed = VolumeCalculator.isVolumeSurge(candles, period = 10, multiplier = 1.0)
+
         if (position == null || position.quantity <= 0.0) {
-            // Context: Buy
-            if (isGoldenCross && currentRsi < 40) {
-                return TradingSignal.ReadyToBuy("EMA Golden Cross + RSI < 40", currentPrice)
+            // Context: Buy Signal
+            if (isGoldenCross && currentRsi < 45 && isVolumeConfirmed) {
+                return TradingSignal.ReadyToBuy("EMA 9/21 Golden Cross + RSI < 45 + Vol Confirm", currentPrice)
             }
             return TradingSignal.MonitoringBuy
         } else {
-            // Context: Sell
-            val profitPct = (currentPrice - position.averageEntryPrice) / position.averageEntryPrice
-            
-            // Hardcoded tight stop loss and take profit for scalping
-            if (profitPct <= -0.005) {
+            // Context: Sell Signal (Dynamic ATR Stop Loss & Take Profit)
+            val atrSl = position.averageEntryPrice - (currentAtr * 1.0)
+            val atrTp = position.averageEntryPrice + (currentAtr * 1.5)
+
+            if (currentPrice <= atrSl) {
                 return TradingSignal.StopLossHit
             }
-            if (profitPct >= 0.01) {
-                return TradingSignal.ReadyToSell("TP 1% Hit", currentPrice)
+            if (currentPrice >= atrTp) {
+                return TradingSignal.ReadyToSell("Dynamic ATR Take Profit (1.5x ATR) Hit", currentPrice)
             }
             
             if (isDeathCross || (currentRsi > 70)) {
-                return TradingSignal.ReadyToSell("EMA Death Cross / RSI Overbought", currentPrice)
+                return TradingSignal.ReadyToSell("EMA Death Cross / RSI Overbought (>70)", currentPrice)
             }
             
             return TradingSignal.MonitoringSell
