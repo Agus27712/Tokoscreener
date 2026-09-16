@@ -1,0 +1,6 @@
+{
+  "name": "Toko Screener",
+  "description": "Market Reader + Auto Signal Trading untuk Tokocrypto",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
