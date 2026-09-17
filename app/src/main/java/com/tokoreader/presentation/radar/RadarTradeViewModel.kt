@@ -17,6 +17,7 @@ import com.tokoreader.domain.repository.PaperTradeRepository
 import com.tokoreader.domain.repository.PositionRepository
 import com.tokoreader.domain.repository.SettingsRepository
 import com.tokoreader.domain.repository.TradeRepository
+import com.tokoreader.domain.usecase.PlaceOrderUseCase
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -65,6 +66,7 @@ class RadarTradeViewModel(
     private val positionRepository: PositionRepository,
     private val paperTradeRepository: PaperTradeRepository,
     private val tradeRepository: TradeRepository,
+    private val placeOrderUseCase: PlaceOrderUseCase,
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
@@ -87,16 +89,23 @@ class RadarTradeViewModel(
     private fun observeSettingsMode() {
         settingsModeJob?.cancel()
         settingsModeJob = viewModelScope.launch {
-            settingsRepository.getTradingMode().collect { mode ->
-                val tf = when (mode) {
-                    "Scalping" -> "1m"
-                    "Intraday" -> "15m"
-                    "Swing" -> "1d"
-                    else -> "1m"
+            launch {
+                settingsRepository.getTradingMode().collect { mode ->
+                    val tf = when (mode) {
+                        "Scalping" -> "1m"
+                        "Intraday" -> "15m"
+                        "Swing" -> "1d"
+                        else -> "1m"
+                    }
+                    _uiState.update { it.copy(strategyMode = mode, activeTimeframe = tf) }
+                    // Re-start candles observation on new timeframe for current symbol
+                    startCandlesObservation(_uiState.value.symbol, tf)
                 }
-                _uiState.update { it.copy(strategyMode = mode, activeTimeframe = tf) }
-                // Re-start candles observation on new timeframe for current symbol
-                startCandlesObservation(_uiState.value.symbol, tf)
+            }
+            launch {
+                settingsRepository.getRealBuyMode().collect { isReal ->
+                    _uiState.update { it.copy(isPaperMode = !isReal) }
+                }
             }
         }
     }
@@ -383,7 +392,7 @@ class RadarTradeViewModel(
                     _uiState.update {
                         it.copy(
                             isExecuting = false,
-                            orderMessage = "Order Paper BUY Berhasil dieksekusi! ID: ${result.getOrNull()?.orderId}",
+                            orderMessage = "Order Paper BUY Berhasil! ID: ${result.getOrNull()?.orderId}",
                             isOrderSuccess = true
                         )
                     }
@@ -391,32 +400,48 @@ class RadarTradeViewModel(
                     _uiState.update {
                         it.copy(
                             isExecuting = false,
-                            orderMessage = "Gagal: ${result.exceptionOrNull()?.message}",
+                            orderMessage = "Gagal Paper: ${result.exceptionOrNull()?.message}",
                             isOrderSuccess = false
                         )
                     }
                 }
             } else {
                 // Real Spot execution
-                val filters = marketDataRepository.getSymbolFilters(state.symbol)
-                val rawQty = state.selectedNominal / currentPrice
-                val stepSize = filters?.stepSize ?: 0.0001
-                val roundedQty = Math.floor(rawQty / stepSize) * stepSize
+                val creds = settingsRepository.getApiCredentials().first()
+                if (creds.apiKey.isBlank() || creds.secret.isBlank()) {
+                    _uiState.update {
+                        it.copy(
+                            isExecuting = false,
+                            orderMessage = "API Key Tokocrypto belum diatur. Silakan atur di menu Pengaturan.",
+                            isOrderSuccess = false
+                        )
+                    }
+                    return@launch
+                }
 
+                val rawQty = state.selectedNominal / currentPrice
                 val req = OrderRequest(
                     symbol = state.symbol,
                     side = 0, // BUY
                     type = 2, // MARKET
-                    quantity = roundedQty,
+                    quantity = rawQty,
                     price = null,
                     stopPrice = null
                 )
-                val res = tradeRepository.placeOrder(req)
+                val res = placeOrderUseCase(req)
                 if (res.isSuccess) {
+                    val orderResult = res.getOrNull()
+                    positionRepository.savePosition(
+                        Position(
+                            symbol = state.symbol,
+                            quantity = rawQty,
+                            averageEntryPrice = currentPrice
+                        )
+                    )
                     _uiState.update {
                         it.copy(
                             isExecuting = false,
-                            orderMessage = "Spot BUY Real Terkirim! ID: ${res.getOrNull()?.orderId}",
+                            orderMessage = "Spot BUY Real Terkirim! Order ID: ${orderResult?.orderId ?: "FILLED"}",
                             isOrderSuccess = true
                         )
                     }
@@ -458,12 +483,24 @@ class RadarTradeViewModel(
                     _uiState.update {
                         it.copy(
                             isExecuting = false,
-                            orderMessage = "Gagal SELL: ${result.exceptionOrNull()?.message}",
+                            orderMessage = "Gagal Paper SELL: ${result.exceptionOrNull()?.message}",
                             isOrderSuccess = false
                         )
                     }
                 }
             } else {
+                val creds = settingsRepository.getApiCredentials().first()
+                if (creds.apiKey.isBlank() || creds.secret.isBlank()) {
+                    _uiState.update {
+                        it.copy(
+                            isExecuting = false,
+                            orderMessage = "API Key Tokocrypto belum diatur. Silakan atur di menu Pengaturan.",
+                            isOrderSuccess = false
+                        )
+                    }
+                    return@launch
+                }
+
                 val req = OrderRequest(
                     symbol = state.symbol,
                     side = 1, // SELL
@@ -472,13 +509,13 @@ class RadarTradeViewModel(
                     price = null,
                     stopPrice = null
                 )
-                val res = tradeRepository.placeOrder(req)
+                val res = placeOrderUseCase(req)
                 if (res.isSuccess) {
                     positionRepository.removePosition(state.symbol)
                     _uiState.update {
                         it.copy(
                             isExecuting = false,
-                            orderMessage = "Spot SELL Real Terkirim!",
+                            orderMessage = "Spot SELL Real Terkirim! Posisi ditutup.",
                             isOrderSuccess = true
                         )
                     }
@@ -508,6 +545,7 @@ class RadarTradeViewModel(
                     positionRepository = app.container.positionRepository,
                     paperTradeRepository = app.container.paperTradeRepository,
                     tradeRepository = app.container.tradeRepository,
+                    placeOrderUseCase = app.container.placeOrderUseCase,
                     settingsRepository = app.container.settingsRepository
                 )
             }

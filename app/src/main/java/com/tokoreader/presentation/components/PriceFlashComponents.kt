@@ -127,12 +127,12 @@ fun LiveTickFlashBadge(
     ) {
         if (isUp) {
             Icon(Icons.Filled.ArrowUpward, contentDescription = "Buy Tick", tint = SuccessGreen, modifier = Modifier.size(12.dp))
-            Text("BUY TICK", color = targetTextColor, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+            Text("", color = targetTextColor, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
         } else if (isDown) {
             Icon(Icons.Filled.ArrowDownward, contentDescription = "Sell Tick", tint = ErrorRed, modifier = Modifier.size(12.dp))
-            Text("SELL TICK", color = targetTextColor, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+            Text("", color = targetTextColor, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
         } else {
-            Text("LIVE", color = targetTextColor, fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold)
+            Text("", color = targetTextColor, fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }

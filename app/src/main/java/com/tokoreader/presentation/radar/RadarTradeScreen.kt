@@ -61,6 +61,7 @@ import com.tokoreader.presentation.components.LiveTickFlashBadge
 import com.tokoreader.presentation.radar.components.RadarPositionSummaryCard
 import com.tokoreader.presentation.radar.components.RadarSwapDialog
 import com.tokoreader.presentation.radar.components.RadarTradeControls
+import com.tokoreader.presentation.radar.components.RealTradeConfirmDialog
 import com.tokoreader.presentation.radar.components.SnapshotChip
 import com.tokoreader.presentation.radar.components.StatBox
 import com.tokoreader.ui.theme.ErrorRed
@@ -81,6 +82,8 @@ fun RadarTradeScreen(
     var showFullscreenChart by remember { mutableStateOf(false) }
     var showSwapDialog by remember { mutableStateOf(false) }
     var swapDirectionToUsdt by remember { mutableStateOf(true) }
+    var showRealBuyConfirmDialog by remember { mutableStateOf(false) }
+    var showRealSellConfirmDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(symbol) {
         if (symbol.isNotEmpty()) {
@@ -114,6 +117,35 @@ fun RadarTradeScreen(
     val isPriceUp = (ticker?.priceChangePercent ?: 0.0) >= 0
     val isHolding = uiState.currentPosition != null
     val isUsdtPair = uiState.symbol.endsWith("USDT", ignoreCase = true) || uiState.symbol.endsWith("USDC", ignoreCase = true)
+    val calculatedQty = if (currentPrice > 0.0) uiState.selectedNominal / currentPrice else 0.0
+
+    // Confirmation dialog for Real Buy
+    if (showRealBuyConfirmDialog) {
+        RealTradeConfirmDialog(
+            isBuy = true,
+            symbol = uiState.symbol,
+            currentPrice = currentPrice,
+            nominal = uiState.selectedNominal,
+            quantity = calculatedQty,
+            isUsdtPair = isUsdtPair,
+            onDismissRequest = { showRealBuyConfirmDialog = false },
+            onConfirm = { viewModel.executeBuy() }
+        )
+    }
+
+    // Confirmation dialog for Real Sell
+    if (showRealSellConfirmDialog) {
+        RealTradeConfirmDialog(
+            isBuy = false,
+            symbol = uiState.symbol,
+            currentPrice = currentPrice,
+            nominal = (uiState.currentPosition?.quantity ?: 0.0) * currentPrice,
+            quantity = uiState.currentPosition?.quantity ?: 0.0,
+            isUsdtPair = isUsdtPair,
+            onDismissRequest = { showRealSellConfirmDialog = false },
+            onConfirm = { viewModel.executeSell() }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -349,7 +381,13 @@ fun RadarTradeScreen(
                         isPaperMode = uiState.isPaperMode,
                         isExecuting = uiState.isExecuting,
                         isUsdtPair = isUsdtPair,
-                        onExecuteSell = { viewModel.executeSell() }
+                        onExecuteSell = {
+                            if (uiState.isPaperMode) {
+                                viewModel.executeSell()
+                            } else {
+                                showRealSellConfirmDialog = true
+                            }
+                        }
                     )
                 } else {
                     RadarTradeControls(
@@ -361,7 +399,13 @@ fun RadarTradeScreen(
                             swapDirectionToUsdt = !isUsdtPair || uiState.paperBalanceUsdt < 10.0
                             showSwapDialog = true
                         },
-                        onExecuteBuy = { viewModel.executeBuy() }
+                        onExecuteBuy = {
+                            if (uiState.isPaperMode) {
+                                viewModel.executeBuy()
+                            } else {
+                                showRealBuyConfirmDialog = true
+                            }
+                        }
                     )
                 }
             }

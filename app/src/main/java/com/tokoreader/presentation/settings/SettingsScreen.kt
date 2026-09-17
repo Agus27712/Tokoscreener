@@ -64,6 +64,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tokoreader.TokoReaderApp
+import com.tokoreader.domain.model.ApiCredentials
+import com.tokoreader.presentation.settings.components.ApiCredentialsDialog
 import com.tokoreader.presentation.settings.components.ModernChip
 import com.tokoreader.presentation.settings.components.ModernToggleRow
 import com.tokoreader.presentation.settings.components.SettingsCardContainer
@@ -92,13 +94,33 @@ fun SettingsScreen(
     val savedAccent by settingsRepository.getAccentColor().collectAsState(initial = "Electric Blue")
     var accent by remember(savedAccent) { mutableStateOf(savedAccent) }
 
+    val apiCredentials by settingsRepository.getApiCredentials().collectAsState(initial = ApiCredentials("", ""))
+    val isApiConfigured = apiCredentials.apiKey.isNotBlank() && apiCredentials.secret.isNotBlank()
+
+    val savedRealBuyMode by settingsRepository.getRealBuyMode().collectAsState(initial = false)
+    var realBuyMode by remember(savedRealBuyMode) { mutableStateOf(savedRealBuyMode) }
+
     // Live preference states
-    var realBuyMode by remember { mutableStateOf(true) }
     var aiProvider by remember { mutableStateOf("Gemini") }
     var throttle by remember { mutableStateOf("200 ms") }
     var priceAlerts by remember { mutableStateOf(true) }
     var tradeNotifications by remember { mutableStateOf(true) }
     var showWipeDialog by remember { mutableStateOf(false) }
+    var showApiDialog by remember { mutableStateOf(false) }
+
+    if (showApiDialog) {
+        ApiCredentialsDialog(
+            initialApiKey = apiCredentials.apiKey,
+            initialSecret = apiCredentials.secret,
+            onDismiss = { showApiDialog = false },
+            onSave = { key, secret ->
+                coroutineScope.launch {
+                    settingsRepository.saveApiCredentials(key, secret)
+                }
+                showApiDialog = false
+            }
+        )
+    }
 
     if (showWipeDialog) {
         AlertDialog(
@@ -470,14 +492,17 @@ fun SettingsScreen(
                                 }
                             }
                             Text(
-                                text = "Kirim pesanan nyata langsung ke exchange",
+                                text = if (realBuyMode) "Order dikirim langsung ke Tokocrypto Spot" else "Paper trade simulasi saldo virtual",
                                 fontSize = 11.5.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Switch(
                             checked = realBuyMode,
-                            onCheckedChange = { realBuyMode = it },
+                            onCheckedChange = {
+                                realBuyMode = it
+                                coroutineScope.launch { settingsRepository.setRealBuyMode(it) }
+                            },
                             colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary)
                         )
                     }
@@ -503,22 +528,48 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.onBackground
                                 )
                                 Text(
-                                    text = "Tersimpan aman ••••••••4f2a",
+                                    text = if (isApiConfigured) "Tersimpan aman ••••••••${apiCredentials.apiKey.takeLast(4)}" else "Belum dikonfigurasi",
                                     fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (isApiConfigured) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFFF59E0B)
                                 )
                             }
                         }
                         Box(
                             modifier = Modifier
-                                .background(SuccessGreen.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                                .background(
+                                    if (isApiConfigured) SuccessGreen.copy(alpha = 0.15f) else Color(0xFFF59E0B).copy(alpha = 0.15f),
+                                    RoundedCornerShape(6.dp)
+                                )
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
-                            Text("Terhubung", color = SuccessGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (isApiConfigured) "Terhubung" else "Belum Disetel",
+                                color = if (isApiConfigured) SuccessGreen else Color(0xFFF59E0B),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
+
+                    // Configure API Button
+                    Button(
+                        onClick = { showApiDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Filled.Key, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isApiConfigured) "Ubah API Key & Secret" else "Atur API Key & Secret",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // Wipe Action Button
                     OutlinedButton(

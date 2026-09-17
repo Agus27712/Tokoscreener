@@ -8,6 +8,9 @@ interface SettingsRepository {
     suspend fun saveApiCredentials(apiKey: String, secret: String)
     suspend fun clearCredentials()
     
+    fun getRealBuyMode(): Flow<Boolean>
+    suspend fun setRealBuyMode(enabled: Boolean)
+
     fun getTradingMode(): Flow<String>
     suspend fun saveTradingMode(mode: String)
 

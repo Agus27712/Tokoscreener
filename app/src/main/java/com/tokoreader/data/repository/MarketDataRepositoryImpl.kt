@@ -58,7 +58,8 @@ class MarketDataRepositoryImpl(
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching direct klines for $symbol", e)
+            if (e is CancellationException) throw e
+            Log.e(TAG, "Error fetching direct klines for $symbol: ${e.message}")
             emptyList()
         }
     }
@@ -83,6 +84,7 @@ class MarketDataRepositoryImpl(
                     trySend(candlesList.toList())
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.w(TAG, "Initial klines load error: ${e.message}")
             }
         }
@@ -435,6 +437,7 @@ class MarketDataRepositoryImpl(
             filterCache[symbol] = filter
             filter
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             val defaultFilter = if (symbol.endsWith("IDR")) {
                 SymbolFilter(tickSize = 1.0, stepSize = 0.00001, minQty = 0.00001, minNotional = 10000.0)
             } else {
@@ -445,34 +448,52 @@ class MarketDataRepositoryImpl(
         }
     }
 
+    private var cachedTickers: List<Ticker> = emptyList()
+    private var lastTickersFetchTime: Long = 0L
+
     override suspend fun getAllTickers(): List<Ticker> {
-        val response = api.get24hTicker()
-        return response.mapNotNull { data ->
-            val sym = data.symbol ?: return@mapNotNull null
-            if (sym.endsWith("BIDR") || sym.contains("UP") || sym.contains("DOWN") || sym.contains("BEAR") || sym.contains("BULL")) {
-                return@mapNotNull null
-            }
-            val price = data.lastPrice?.toDoubleOrNull() ?: 0.0
-            val volume = data.quoteVolume?.toDoubleOrNull() ?: 0.0
-            if (price <= 0.0) return@mapNotNull null
+        val now = System.currentTimeMillis()
+        if (cachedTickers.isNotEmpty() && (now - lastTickersFetchTime) < 4000L) {
+            return cachedTickers
+        }
 
-            val isSufficientVolume = when {
-                sym.endsWith("IDR") -> volume >= 5_000_000.0
-                sym.endsWith("USDT") -> volume >= 500.0
-                sym.endsWith("BTC") -> volume >= 0.01
-                else -> volume > 0.0
-            }
-            if (!isSufficientVolume) return@mapNotNull null
+        return try {
+            val response = api.get24hTicker()
+            val result = response.mapNotNull { data ->
+                val sym = data.symbol ?: return@mapNotNull null
+                if (sym.endsWith("BIDR") || sym.contains("UP") || sym.contains("DOWN") || sym.contains("BEAR") || sym.contains("BULL")) {
+                    return@mapNotNull null
+                }
+                val price = data.lastPrice?.toDoubleOrNull() ?: 0.0
+                val volume = data.quoteVolume?.toDoubleOrNull() ?: 0.0
+                if (price <= 0.0) return@mapNotNull null
 
-            Ticker(
-                symbol = sym,
-                price = price,
-                priceChangePercent = data.priceChangePercent?.toDoubleOrNull() ?: 0.0,
-                volume24h = volume,
-                high24h = data.highPrice?.toDoubleOrNull() ?: 0.0,
-                low24h = data.lowPrice?.toDoubleOrNull() ?: 0.0
-            )
-        }.sortedByDescending { it.volume24h }
+                val isSufficientVolume = when {
+                    sym.endsWith("IDR") -> volume >= 1_000_000.0
+                    sym.endsWith("USDT") -> volume >= 100.0
+                    sym.endsWith("BTC") -> volume >= 0.005
+                    else -> volume > 0.0
+                }
+                if (!isSufficientVolume) return@mapNotNull null
+
+                Ticker(
+                    symbol = sym,
+                    price = price,
+                    priceChangePercent = data.priceChangePercent?.toDoubleOrNull() ?: 0.0,
+                    volume24h = volume,
+                    high24h = data.highPrice?.toDoubleOrNull() ?: 0.0,
+                    low24h = data.lowPrice?.toDoubleOrNull() ?: 0.0
+                )
+            }.sortedByDescending { it.volume24h }
+
+            cachedTickers = result
+            lastTickersFetchTime = now
+            result
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e(TAG, "Error fetching all tickers: ${e.message}")
+            if (cachedTickers.isNotEmpty()) cachedTickers else emptyList()
+        }
     }
 
     override suspend fun getAllIdrTickers(): List<Ticker> {

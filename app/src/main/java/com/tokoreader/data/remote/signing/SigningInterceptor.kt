@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
+import java.io.IOException
 
 class SigningInterceptor(
     private val settingsRepository: SettingsRepository
@@ -21,16 +22,15 @@ class SigningInterceptor(
         var builder = originalRequest.newBuilder()
             .removeHeader("Signed")
 
-        // We run in runBlocking here because OkHttp interceptors are synchronous,
-        // but our SettingsRepository uses Flow. In a real app, you might want to cache this 
-        // to avoid reading preferences on main thread (OkHttp background threads are fine).
         val credentials = runBlocking { settingsRepository.getApiCredentials().first() }
-        val apiKey = credentials.apiKey
-        val secret = credentials.secret
+        val apiKey = credentials.apiKey.trim()
+        val secret = credentials.secret.trim()
 
-        if (apiKey.isNotEmpty()) {
-            builder = builder.addHeader("X-MBX-APIKEY", apiKey)
+        if (apiKey.isEmpty() || secret.isEmpty()) {
+            throw IOException("Kredensial API Tokocrypto belum diatur. Masukkan API Key & Secret di menu Pengaturan.")
         }
+
+        builder = builder.addHeader("X-MBX-APIKEY", apiKey)
 
         val originalUrl = originalRequest.url
         val timestamp = System.currentTimeMillis().toString()
@@ -44,10 +44,8 @@ class SigningInterceptor(
         val urlWithParams = urlBuilder.build()
         val payload = urlWithParams.query ?: ""
 
-        if (secret.isNotEmpty()) {
-            val signature = HmacSha256Signer.sign(secret, payload)
-            urlBuilder.addQueryParameter("signature", signature)
-        }
+        val signature = HmacSha256Signer.sign(secret, payload)
+        urlBuilder.addQueryParameter("signature", signature)
 
         val finalRequest = builder.url(urlBuilder.build()).build()
         return chain.proceed(finalRequest)

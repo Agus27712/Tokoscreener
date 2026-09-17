@@ -93,37 +93,6 @@ fun DashboardHeroCard(
                             softWrap = false
                         )
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    // AI Signal Pill
-                    Box(
-                        modifier = Modifier
-                            .border(
-                                1.dp,
-                                if (isUp) Color(0xFF059669).copy(alpha = 0.6f) else Color(0xFFDC2626).copy(alpha = 0.6f),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .background(
-                                if (isUp) Color(0xFF064E3B).copy(alpha = 0.35f) else Color(0xFF7F1D1D).copy(alpha = 0.35f),
-                                RoundedCornerShape(8.dp)
-                            )
-                            .padding(horizontal = 9.dp, vertical = 4.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = if (isUp) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
-                                contentDescription = "Trend",
-                                tint = if (isUp) SuccessGreen else ErrorRed,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "SCALPING · AI Signal",
-                                color = if (isUp) SuccessGreen else ErrorRed,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
                 }
 
                 // Right Section: Mini Candlestick Sparkline

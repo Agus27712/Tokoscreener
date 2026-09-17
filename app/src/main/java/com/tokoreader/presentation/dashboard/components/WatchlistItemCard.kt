@@ -14,8 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,8 +31,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tokoreader.domain.model.Ticker
-import com.tokoreader.domain.repository.MarketDataRepository
-import com.tokoreader.presentation.chart.TokocryptoMiniChart
 import com.tokoreader.presentation.components.CryptoCoinAvatar
 import com.tokoreader.presentation.components.CryptoUtils
 import com.tokoreader.presentation.components.LivePriceFlashText
@@ -39,7 +42,6 @@ import java.util.Locale
 @Composable
 fun WatchlistItemCard(
     ticker: Ticker,
-    marketDataRepository: MarketDataRepository,
     onClick: () -> Unit
 ) {
     val isUp = ticker.priceChangePercent >= 0
@@ -47,7 +49,7 @@ fun WatchlistItemCard(
     val changeColor = if (isUp) SuccessGreen else ErrorRed
     val (baseSymbol, quoteSymbol) = CryptoUtils.splitSymbol(ticker.symbol)
 
-    // Determine badge state
+    // Determine badge status
     val (badgeText, isHot, isReadySell) = when {
         ticker.priceChangePercent >= 3.0 -> Triple("🔥 HOT", true, false)
         ticker.priceChangePercent > 0 -> Triple("READY SELL", false, true)
@@ -57,35 +59,36 @@ fun WatchlistItemCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 4.dp)
+            .padding(horizontal = 14.dp, vertical = 5.dp)
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, Color(0xFF1E293B))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
-            // 1. Top Section: Left (Avatar + Pair + Badge + Full Coin Name) & Right (Price + Percent Pill)
+            // 1. Top Section: Identity & Live Price with Percentage
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: Coin Identity
+                // Left: Avatar + Pair Name + Badge + Full Coin Name
                 Row(
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
                 ) {
-                    CryptoCoinAvatar(symbol = baseSymbol, modifier = Modifier.size(36.dp))
-                    Spacer(modifier = Modifier.width(9.dp))
+                    CryptoCoinAvatar(symbol = baseSymbol, modifier = Modifier.size(40.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = if (quoteSymbol.isNotEmpty()) "$baseSymbol/$quoteSymbol" else baseSymbol,
                                 color = Color.White,
-                                fontSize = 14.sp,
+                                fontSize = 15.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -95,89 +98,112 @@ fun WatchlistItemCard(
                         Text(
                             text = CryptoUtils.getCoinName(baseSymbol),
                             color = Color(0xFF94A3B8),
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                // Right: Realtime Price & Percent
+                // Right: Realtime Price + Change Percent Tag
                 Column(horizontalAlignment = Alignment.End) {
                     LivePriceFlashText(
                         price = ticker.price,
                         symbol = ticker.symbol,
                         tickDirection = ticker.tickDirection,
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Box(
                         modifier = Modifier
-                            .background(changeColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .background(changeColor.copy(alpha = 0.18f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
-                        Text(
-                            text = "${sign}${String.format(Locale.US, "%.2f", ticker.priceChangePercent)}%",
-                            color = changeColor,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (isUp) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
+                                contentDescription = null,
+                                tint = changeColor,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "${sign}${String.format(Locale.US, "%.2f", ticker.priceChangePercent)}%",
+                                color = changeColor,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // 2. Full-Width Sparkline from Left to Right
-            TokocryptoMiniChart(
-                symbol = ticker.symbol,
-                priceChangePercent = ticker.priceChangePercent,
-                marketDataRepository = marketDataRepository,
+            // Divider line subtle
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(36.dp),
-                strokeWidth = 2.dp,
-                showEndGlow = true
+                    .height(1.dp)
+                    .background(Color(0xFF1E293B).copy(alpha = 0.6f))
             )
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // 3. Bottom Row: Aligned Orderbook & 24h Volume & Signal
+            // 2. Bottom Metrics Row: Volume 24H (Bigger) & High/Low 24H
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Orderbook Pressure
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Orderbook: ",
-                        color = Color(0xFF64748B),
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.Normal
-                    )
-                    Text(
-                        text = if (isUp) "↑ Buyer Dominan" else "↓ Seller Tekan",
-                        color = changeColor,
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                // 24h Volume
+                // Volume 24h (Prominent)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "Vol 24j: ",
-                        color = Color(0xFF64748B),
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.Normal
+                        color = Color(0xFF94A3B8),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
                     )
                     Text(
                         text = CryptoUtils.formatCryptoVolume(ticker.symbol, ticker.volume24h),
-                        color = Color(0xFFCBD5E1),
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.SemiBold
+                        color = Color(0xFFE2E8F0),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // 24h High / Low or Orderbook status
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (ticker.high24h > 0 && ticker.low24h > 0) {
+                        Text(
+                            text = "H: ${CryptoUtils.formatCryptoPrice(ticker.symbol, ticker.high24h)}",
+                            color = Color(0xFF10B981),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "L: ${CryptoUtils.formatCryptoPrice(ticker.symbol, ticker.low24h)}",
+                            color = Color(0xFFEF4444),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        Text(
+                            text = if (isUp) "Buyer Aktif" else "Seller Tekan",
+                            color = changeColor,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Filled.ChevronRight,
+                        contentDescription = "Detail",
+                        tint = Color(0xFF64748B),
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }

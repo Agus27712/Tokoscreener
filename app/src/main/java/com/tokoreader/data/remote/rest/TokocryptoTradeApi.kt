@@ -1,9 +1,10 @@
 package com.tokoreader.data.remote.rest
 
-import retrofit2.http.POST
+import retrofit2.http.DELETE
 import retrofit2.http.GET
-import retrofit2.http.Query
 import retrofit2.http.Headers
+import retrofit2.http.POST
+import retrofit2.http.Query
 
 interface TokocryptoTradeApi {
     @Headers("Signed: true")
@@ -15,6 +16,31 @@ interface TokocryptoTradeApi {
         @Query("quantity") quantity: String?,
         @Query("price") price: String?,
         @Query("stopPrice") stopPrice: String?
+    ): OrderResponse
+
+    @Headers("Signed: true")
+    @POST("open/v1/orders/oco")
+    suspend fun placeOcoOrder(
+        @Query("symbol") symbol: String,
+        @Query("side") side: Int, // 0 = BUY, 1 = SELL
+        @Query("quantity") quantity: String,
+        @Query("price") price: String,
+        @Query("stopPrice") stopPrice: String,
+        @Query("stopLimitPrice") stopLimitPrice: String?
+    ): OrderResponse
+
+    @Headers("Signed: true")
+    @DELETE("open/v1/orders")
+    suspend fun cancelOrder(
+        @Query("symbol") symbol: String,
+        @Query("orderId") orderId: String
+    ): OrderResponse
+
+    @Headers("Signed: true")
+    @GET("open/v1/orders/detail")
+    suspend fun getOrderDetail(
+        @Query("symbol") symbol: String,
+        @Query("orderId") orderId: String
     ): OrderResponse
 
     @Headers("Signed: true")
@@ -43,3 +69,4 @@ data class ListenKeyResponse(
     val msg: String,
     val data: String
 )
+

@@ -237,7 +237,6 @@ fun DashboardScreen(
                     val ticker = uiState.watchList[index]
                     WatchlistItemCard(
                         ticker = ticker,
-                        marketDataRepository = repository,
                         onClick = { onNavigateToRadar(ticker.symbol) }
                     )
                 }

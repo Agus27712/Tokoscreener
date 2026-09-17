@@ -179,11 +179,18 @@ fun RadarTradeControls(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Targets (Entry, TP1, TP2)
-            val tp1Price = currentPrice * 1.02
-            val tp2Price = currentPrice * 1.045
-            val tp1EstGain = uiState.selectedNominal * 0.02
-            val tp2EstGain = uiState.selectedNominal * 0.045
+            // Dynamic Targets based on strategy mode (Scalping, Intraday, Swing)
+            val (tp1Percent, tp2Percent, slPercent) = when (uiState.strategyMode) {
+                "Scalping" -> Triple(0.012, 0.025, 0.010)
+                "Intraday" -> Triple(0.025, 0.050, 0.020)
+                "Swing" -> Triple(0.060, 0.120, 0.040)
+                else -> Triple(0.020, 0.045, 0.018)
+            }
+
+            val tp1Price = currentPrice * (1.0 + tp1Percent)
+            val tp2Price = currentPrice * (1.0 + tp2Percent)
+            val tp1EstGain = uiState.selectedNominal * tp1Percent
+            val tp2EstGain = uiState.selectedNominal * tp2Percent
 
             val tp1GainFormatted = if (isUsdtPair) {
                 "+$ ${String.format(Locale.US, "%.2f", tp1EstGain)}"
@@ -197,6 +204,9 @@ fun RadarTradeControls(
                 "+Rp ${NumberFormat.getNumberInstance(Locale.US).format(tp2EstGain.toLong())}"
             }
 
+            val tp1Label = "+${String.format(Locale.US, "%.1f", tp1Percent * 100)}%"
+            val tp2Label = "+${String.format(Locale.US, "%.1f", tp2Percent * 100)}%"
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -207,7 +217,7 @@ fun RadarTradeControls(
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Column(modifier = Modifier.padding(8.dp)) {
-                        Text("Entry Sekarang", color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1)
+                        Text("Entry Live", color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             CryptoUtils.formatCryptoPrice(uiState.symbol, currentPrice),
@@ -216,7 +226,7 @@ fun RadarTradeControls(
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
                         )
-                        Text("Harga Live", color = Color(0xFF64748B), fontSize = 9.sp)
+                        Text("${uiState.strategyMode}", color = Color(0xFF64748B), fontSize = 9.sp)
                     }
                 }
 
@@ -226,7 +236,7 @@ fun RadarTradeControls(
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Column(modifier = Modifier.padding(8.dp)) {
-                        Text("Target TP 1 (+2%)", color = SuccessGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text("TP 1 ($tp1Label)", color = SuccessGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             CryptoUtils.formatCryptoPrice(uiState.symbol, tp1Price),
@@ -245,7 +255,7 @@ fun RadarTradeControls(
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Column(modifier = Modifier.padding(8.dp)) {
-                        Text("Target TP 2 (+4.5%)", color = SuccessGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text("TP 2 ($tp2Label)", color = SuccessGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             CryptoUtils.formatCryptoPrice(uiState.symbol, tp2Price),

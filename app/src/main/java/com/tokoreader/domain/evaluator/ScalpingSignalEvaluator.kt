@@ -1,6 +1,7 @@
 package com.tokoreader.domain.evaluator
 
 import com.tokoreader.domain.indicator.AtrCalculator
+import com.tokoreader.domain.indicator.BollingerBandsCalculator
 import com.tokoreader.domain.indicator.EmaCalculator
 import com.tokoreader.domain.indicator.RsiCalculator
 import com.tokoreader.domain.indicator.VolumeCalculator
@@ -20,6 +21,7 @@ class ScalpingSignalEvaluator : TradingSignalEvaluator {
         val emaSlow = EmaCalculator.calculate(candles, 21)
         val rsi = RsiCalculator.calculate(candles, 9)
         val atr = AtrCalculator.calculate(candles, 14)
+        val bb = BollingerBandsCalculator.calculate(candles, 20, 2.0)
 
         val lastIndex = candles.size - 1
         val prevIndex = lastIndex - 1
@@ -30,6 +32,7 @@ class ScalpingSignalEvaluator : TradingSignalEvaluator {
         val prevEmaSlow = emaSlow[prevIndex]
         val currentRsi = rsi[lastIndex]
         val currentAtr = atr[lastIndex]
+        val currentBb = bb[lastIndex]
         
         val currentPrice = candles[lastIndex].close
 
@@ -39,11 +42,14 @@ class ScalpingSignalEvaluator : TradingSignalEvaluator {
 
         // Volume Filter
         val isVolumeConfirmed = VolumeCalculator.isVolumeSurge(candles, period = 10, multiplier = 1.0)
+        
+        // Bollinger Bands Filter
+        val isNearLowerBb = currentPrice <= currentBb.lower * 1.025
 
         if (position == null || position.quantity <= 0.0) {
             // Context: Buy Signal
-            if (isGoldenCross && currentRsi < 45 && isVolumeConfirmed) {
-                return TradingSignal.ReadyToBuy("EMA 9/21 Golden Cross + RSI < 45 + Vol Confirm", currentPrice)
+            if (isGoldenCross && currentRsi < 45 && isVolumeConfirmed && isNearLowerBb) {
+                return TradingSignal.ReadyToBuy("EMA 9/21 Golden Cross + RSI < 45 + Vol Confirm + Near Lower BB", currentPrice)
             }
             return TradingSignal.MonitoringBuy
         } else {
@@ -58,8 +64,8 @@ class ScalpingSignalEvaluator : TradingSignalEvaluator {
                 return TradingSignal.ReadyToSell("Dynamic ATR Take Profit (1.5x ATR) Hit", currentPrice)
             }
             
-            if (isDeathCross || (currentRsi > 70)) {
-                return TradingSignal.ReadyToSell("EMA Death Cross / RSI Overbought (>70)", currentPrice)
+            if (isDeathCross || (currentRsi > 70) || (currentPrice >= currentBb.upper)) {
+                return TradingSignal.ReadyToSell("EMA Death Cross / RSI Overbought (>70) / Upper BB Hit", currentPrice)
             }
             
             return TradingSignal.MonitoringSell

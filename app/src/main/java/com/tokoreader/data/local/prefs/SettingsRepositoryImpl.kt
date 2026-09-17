@@ -37,6 +37,7 @@ class SettingsRepositoryImpl(private val context: Context) : SettingsRepository 
     private val API_SECRET = "tokocrypto_api_secret"
     private val APP_PIN = "app_security_pin"
     private val REAL_BUY_MODE = booleanPreferencesKey("real_buy_mode")
+    private val API_CRED_UPDATE_KEY = longPreferencesKey("api_cred_updated_at")
 
     override fun getApiCredentials(): Flow<ApiCredentials> = context.dataStore.data.map {
         // We trigger flow emit, but read actual secure keys from EncryptedPrefs
@@ -50,6 +51,7 @@ class SettingsRepositoryImpl(private val context: Context) : SettingsRepository 
             .putString(API_KEY, apiKey)
             .putString(API_SECRET, secret)
             .apply()
+        context.dataStore.edit { it[API_CRED_UPDATE_KEY] = System.currentTimeMillis() }
     }
 
     override suspend fun clearCredentials() {
@@ -58,6 +60,7 @@ class SettingsRepositoryImpl(private val context: Context) : SettingsRepository 
             .remove(API_SECRET)
             .remove(APP_PIN)
             .apply()
+        context.dataStore.edit { it[API_CRED_UPDATE_KEY] = System.currentTimeMillis() }
     }
 
     // Security PIN
@@ -106,11 +109,11 @@ class SettingsRepositoryImpl(private val context: Context) : SettingsRepository 
         context.dataStore.edit { it[AI_PROVIDER_KEY] = provider }
     }
     
-    fun getRealBuyMode(): Flow<Boolean> = context.dataStore.data.map {
+    override fun getRealBuyMode(): Flow<Boolean> = context.dataStore.data.map {
         it[REAL_BUY_MODE] ?: false
     }
     
-    suspend fun setRealBuyMode(enabled: Boolean) {
+    override suspend fun setRealBuyMode(enabled: Boolean) {
         context.dataStore.edit { it[REAL_BUY_MODE] = enabled }
     }
 }

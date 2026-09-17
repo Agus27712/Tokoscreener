@@ -1,5 +1,10 @@
 package com.tokoreader.presentation
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
@@ -38,13 +43,26 @@ fun MainAppScreen() {
     val settingsRepository = remember(context) { (context.applicationContext as TokoReaderApp).container.settingsRepository }
     val themeMode by settingsRepository.getThemeMode().collectAsStateWithLifecycle(initialValue = "Dark Navy")
     val accentColor by settingsRepository.getAccentColor().collectAsStateWithLifecycle(initialValue = "Electric Blue")
+
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    // Handle back button smoothly to prevent accidental app exits from other main tabs
+    if (currentRoute != null && currentRoute != "dashboard") {
+        BackHandler {
+            if (!navController.popBackStack()) {
+                navController.navigate("dashboard") {
+                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+        }
+    }
     
     TokoReaderTheme(themeMode = themeMode, accentColor = accentColor) {
         Scaffold(
             bottomBar = {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentRoute = navBackStackEntry?.destination?.route
-
                 NavigationBar {
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Dashboard, contentDescription = "Dashboard") },
@@ -73,7 +91,7 @@ fun MainAppScreen() {
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Radar, contentDescription = "Radar") },
                         label = { Text("Radar") },
-                        selected = currentRoute?.startsWith("radar") == true,
+                        selected = currentRoute == "radar" || currentRoute?.startsWith("radar/") == true,
                         onClick = {
                             navController.navigate("radar") {
                                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -100,7 +118,31 @@ fun MainAppScreen() {
             NavHost(
                 navController = navController,
                 startDestination = "dashboard",
-                modifier = Modifier.padding(innerPadding)
+                modifier = Modifier.padding(innerPadding),
+                enterTransition = {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Left,
+                        animationSpec = tween(260)
+                    ) + fadeIn(animationSpec = tween(260))
+                },
+                exitTransition = {
+                    slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Left,
+                        animationSpec = tween(260)
+                    ) + fadeOut(animationSpec = tween(260))
+                },
+                popEnterTransition = {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        animationSpec = tween(260)
+                    ) + fadeIn(animationSpec = tween(260))
+                },
+                popExitTransition = {
+                    slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        animationSpec = tween(260)
+                    ) + fadeOut(animationSpec = tween(260))
+                }
             ) {
                 composable("dashboard") {
                     DashboardScreen(

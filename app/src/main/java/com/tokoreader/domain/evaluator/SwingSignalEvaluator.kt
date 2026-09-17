@@ -3,6 +3,7 @@ package com.tokoreader.domain.evaluator
 import com.tokoreader.domain.indicator.AdxCalculator
 import com.tokoreader.domain.indicator.AtrCalculator
 import com.tokoreader.domain.indicator.EmaCalculator
+import com.tokoreader.domain.indicator.FibonacciCalculator
 import com.tokoreader.domain.indicator.RsiCalculator
 import com.tokoreader.domain.indicator.VolumeCalculator
 import com.tokoreader.domain.model.Kline
@@ -28,6 +29,22 @@ class SwingSignalEvaluator : TradingSignalEvaluator {
         val currentAdx = adx[lastIndex]
         val currentPrice = candles[lastIndex].close
 
+        // Swing High & Low from last 100 candles for Fibonacci Retracement
+        val lookback = 100
+        val startIndex = (candles.size - lookback).coerceAtLeast(0)
+        var swingHigh = Double.MIN_VALUE
+        var swingLow = Double.MAX_VALUE
+        for (i in startIndex until candles.size) {
+            val high = candles[i].high
+            val low = candles[i].low
+            if (high > swingHigh) swingHigh = high
+            if (low < swingLow) swingLow = low
+        }
+
+        val fibLevels = FibonacciCalculator.calculateRetracement(swingHigh, swingLow)
+        // Fib Support Zone is usually between 38.2% and 78.6% retracement (healthy correction in uptrend)
+        val isFibSupported = currentPrice >= fibLevels.level786 && currentPrice <= fibLevels.level382
+
         val isUptrend = currentEma50 > currentEma200
         val isOversoldRebound = currentRsi > 30 && rsi[lastIndex - 1] <= 30
         
@@ -39,8 +56,8 @@ class SwingSignalEvaluator : TradingSignalEvaluator {
 
         if (position == null || position.quantity <= 0.0) {
             // Context: Buy Signal
-            if (isUptrend && isOversoldRebound && (isAdxConfirmed || isVolumeConfirmed)) {
-                return TradingSignal.ReadyToBuy("EMA 50/200 Uptrend + RSI Rebound + ADX/Vol Confirm", currentPrice)
+            if (isUptrend && isOversoldRebound && isFibSupported && (isAdxConfirmed || isVolumeConfirmed)) {
+                return TradingSignal.ReadyToBuy("EMA 50/200 Uptrend + RSI Rebound + Fib Support + ADX/Vol Confirm", currentPrice)
             }
             return TradingSignal.MonitoringBuy
         } else {
@@ -54,6 +71,10 @@ class SwingSignalEvaluator : TradingSignalEvaluator {
 
             if (currentPrice >= atrTakeProfit) {
                 return TradingSignal.ReadyToSell("Dynamic ATR Swing TP (4x ATR) Hit", currentPrice)
+            }
+
+            if (currentPrice >= fibLevels.level236) {
+                return TradingSignal.ReadyToSell("Fibonacci Target Profit Level Hit (>23.6%)", currentPrice)
             }
 
             if (currentEma50 < currentEma200 || currentRsi > 70) {
