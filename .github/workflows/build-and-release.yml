@@ -7,22 +7,13 @@ on:
       - master
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - main
-      - master
   workflow_dispatch:
     inputs:
-      create_release:
-        description: 'Publish as a GitHub Release?'
-        required: true
-        type: boolean
-        default: true
       release_tag:
-        description: 'Release Tag (e.g., v1.0.0, default: auto-generated timestamp tag)'
+        description: 'Release Tag (e.g., v1.0.0 or debug-latest)'
         required: false
         type: string
-        default: ''
+        default: 'debug-latest'
       release_title:
         description: 'Release Title'
         required: false
@@ -33,8 +24,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: 🛠️ Build Android Debug APK
+  build_and_release:
+    name: 🚀 Build & Direct GitHub Release
     runs-on: ubuntu-latest
 
     steps:
@@ -52,6 +43,7 @@ jobs:
       - name: 🐘 Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
+          gradle-version: '9.0'
           cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
       - name: 🔑 Restore Environment & Keystore
@@ -69,15 +61,17 @@ jobs:
             echo "debug.keystore successfully generated from base64."
           fi
 
+          echo "Generating Gradle Wrapper if missing..."
+          gradle wrapper --gradle-version 9.0 || true
           chmod +x ./gradlew || true
 
       - name: 🧪 Run Unit Tests
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+        run: gradle testDebugUnitTest --no-daemon --stacktrace
 
       - name: 📦 Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: gradle assembleDebug --no-daemon --stacktrace
 
-      - name: 🏷️ Prepare APK Artifact & Checksum
+      - name: 🏷️ Prepare APK Release Files
         run: |
           cd app/build/outputs/apk/debug
           cp app-debug.apk TokoReader-debug.apk
@@ -85,21 +79,27 @@ jobs:
           echo "Generated APK SHA256:"
           cat TokoReader-debug.apk.sha256
 
-      - name: 📤 Upload Debug APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: TokoReader-Debug-APK
-          path: |
-            app/build/outputs/apk/debug/TokoReader-debug.apk
-            app/build/outputs/apk/debug/TokoReader-debug.apk.sha256
-          retention-days: 14
+      - name: 🏷️ Determine Tag & Title
+        id: release_info
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.release_tag }}"
+            TITLE="${{ github.event.inputs.release_title }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            TITLE="Release $TAG"
+          else
+            TAG="debug-latest"
+            TITLE="TokoReader Latest Debug Build"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
 
-      - name: 🚀 Publish to GitHub Releases
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
+      - name: 🚀 Publish Direct to GitHub Releases (No Artifact Storage Used)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
-          name: ${{ github.event.inputs.release_title || github.ref_name }}
+          tag_name: ${{ steps.release_info.outputs.tag }}
+          name: ${{ steps.release_info.outputs.title }}
           draft: false
           prerelease: false
           generate_release_notes: true

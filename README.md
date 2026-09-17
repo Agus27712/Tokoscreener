@@ -10,16 +10,13 @@
 
 ---
 
-## 📥 Unduh Debug APK (GitHub Releases & Actions)
+## 📥 Unduh Debug APK (Direct GitHub Releases)
 
-Anda dapat langsung mengunduh file APK siap pakai melalui dua cara:
+Aplikasi TokoReader langsung dipublikasikan ke **GitHub Releases** tanpa memakan kuota penyimpanan Actions Artifact:
 
-1. **GitHub Releases**:
-   - Buka tab **[Releases](../../releases)** pada repositori ini.
-   - Unduh file `TokoReader-debug.apk` versi terbaru.
-2. **GitHub Actions Artifact**:
-   - Buka tab **[Actions](../../actions)** pada repositori ini.
-   - Klik workflow run terbaru, lalu scroll ke bagian **Artifacts** di bawah dan unduh `TokoReader-Debug-APK`.
+- Buka tab **[Releases](../../releases)** pada repositori ini.
+- Unduh file `TokoReader-debug.apk` versi rilis terbaru atau tag `debug-latest`.
+- Tersedia pula file checksum SHA-256 (`TokoReader-debug.apk.sha256`) untuk verifikasi integritas file.
 
 ---
 
