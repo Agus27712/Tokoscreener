@@ -1,5 +1,6 @@
 package com.tokoreader.presentation.radar
 
+import com.tokoreader.data.local.logging.AppLogger
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -402,7 +403,7 @@ class RadarTradeViewModel(
                     }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Gagal memuat saldo riil: ${e.message}")
+                AppLogger.w(TAG, "Gagal memuat saldo riil: ${e.message}")
             }
         }
     }
@@ -433,7 +434,7 @@ class RadarTradeViewModel(
                     val okHttpClient = OkHttpClient.Builder().build()
                     userDataStreamWebSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
                         override fun onOpen(webSocket: WebSocket, response: Response) {
-                            Log.d(TAG, "User Data Stream WebSocket Connected")
+                            AppLogger.i(TAG, "User Data Stream WebSocket Connected: $wsUrl")
                         }
 
                         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -461,6 +462,7 @@ class RadarTradeViewModel(
                                                 paperBalanceUsdt = realUsdt
                                             )
                                         }
+                                        AppLogger.d(TAG, "User Data Stream Balance Update: IDR=$realIdr, USDT=$realUsdt")
                                     }
                                 } else if (eventType == "executionReport") {
                                     val symbol = json.optString("s")
@@ -468,6 +470,8 @@ class RadarTradeViewModel(
                                     val orderStatus = json.optString("X")
                                     val qty = json.optString("q").toDoubleOrNull() ?: 0.0
                                     val price = json.optString("p").toDoubleOrNull() ?: 0.0
+
+                                    AppLogger.i(TAG, "User Data Stream Order Report: $symbol $side status=$orderStatus price=$price qty=$qty")
 
                                     if (orderStatus == "FILLED") {
                                         viewModelScope.launch {
@@ -482,12 +486,12 @@ class RadarTradeViewModel(
                                     }
                                 }
                             } catch (e: Exception) {
-                                Log.w(TAG, "Error parsing User Data Stream message: ${e.message}")
+                                AppLogger.w(TAG, "Error parsing User Data Stream message: ${e.message}")
                             }
                         }
 
                         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                            Log.w(TAG, "User Data Stream WS error: ${t.message}")
+                            AppLogger.e(TAG, "User Data Stream WS error: ${t.message}", t)
                             viewModelScope.launch {
                                 delay(5000)
                                 if (!_uiState.value.isPaperMode) {
@@ -498,7 +502,7 @@ class RadarTradeViewModel(
                     })
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Gagal start User Data Stream: ${e.message}")
+                AppLogger.e(TAG, "Gagal start User Data Stream: ${e.message}", e)
             }
         }
     }

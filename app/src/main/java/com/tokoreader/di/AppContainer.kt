@@ -14,6 +14,7 @@ import com.tokoreader.data.repository.MarketDataRepositoryImpl
 import com.tokoreader.data.repository.PaperTradeRepositoryImpl
 import com.tokoreader.data.repository.PositionRepositoryImpl
 import com.tokoreader.data.repository.TradeRepositoryImpl
+import com.tokoreader.data.local.logging.AppLogger
 import com.tokoreader.domain.evaluator.DayTradingSignalEvaluator
 import com.tokoreader.domain.evaluator.ScalpingSignalEvaluator
 import com.tokoreader.domain.evaluator.SwingSignalEvaluator
@@ -35,6 +36,13 @@ import java.util.concurrent.TimeUnit
 class DynamicMarketUrlInterceptor(private val settingsRepository: SettingsRepository) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
+        val isWebSocket = originalRequest.header("Upgrade")?.equals("websocket", ignoreCase = true) == true ||
+                originalRequest.url.scheme.startsWith("ws") ||
+                originalRequest.url.port == 9443
+        if (isWebSocket) {
+            return chain.proceed(originalRequest)
+        }
+
         val symbolType = settingsRepository.getCurrentSymbolType()
         val url = originalRequest.url
         val host = url.host
@@ -63,6 +71,8 @@ class DynamicMarketUrlInterceptor(private val settingsRepository: SettingsReposi
             val newRequest = originalRequest.newBuilder()
                 .url(newBuilder.build())
                 .build()
+            
+            AppLogger.d("DynamicMarketUrl", "Routing endpoint to: ${newRequest.url}")
             return chain.proceed(newRequest)
         }
 
@@ -85,6 +95,13 @@ class FallbackHostInterceptor : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
+        val isWebSocket = originalRequest.header("Upgrade")?.equals("websocket", ignoreCase = true) == true ||
+                originalRequest.url.scheme.startsWith("ws") ||
+                originalRequest.url.port == 9443
+        if (isWebSocket) {
+            return chain.proceed(originalRequest)
+        }
+
         var lastException: IOException? = null
         var lastResponse: Response? = null
 
@@ -102,14 +119,17 @@ class FallbackHostInterceptor : Interceptor {
                     return response
                 }
                 if (response.code == 451 || response.code == 403 || response.code == 502 || response.code == 503) {
-                    Log.w(TAG, "Host $host returned HTTP ${response.code}, trying fallback host")
+                    AppLogger.w(TAG, "Host $host returned HTTP ${response.code}, trying fallback host")
                     response.close()
                     lastResponse = response
                     continue
                 }
                 return response
             } catch (e: IOException) {
-                Log.w(TAG, "Host $host connection failed (${e.message}), trying fallback host")
+                if (chain.call().isCanceled() || e.message?.contains("cancel", ignoreCase = true) == true) {
+                    throw e
+                }
+                AppLogger.w(TAG, "Host $host connection failed (${e.message}), trying fallback host")
                 lastException = e
             }
         }
@@ -117,7 +137,9 @@ class FallbackHostInterceptor : Interceptor {
         if (lastResponse != null) {
             return lastResponse
         }
-        throw lastException ?: IOException("Failed to connect to any candidate market data host")
+        val ex = lastException ?: IOException("Failed to connect to any candidate market data host")
+        AppLogger.e(TAG, "Critical: All candidate hosts exhausted", ex)
+        throw ex
     }
 }
 

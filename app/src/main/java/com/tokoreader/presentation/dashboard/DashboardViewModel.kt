@@ -1,6 +1,6 @@
 package com.tokoreader.presentation.dashboard
 
-import android.util.Log
+import com.tokoreader.data.local.logging.AppLogger
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -62,7 +62,7 @@ class DashboardViewModel(
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
     init {
-        Log.d(TAG, "ViewModel initialized, starting data fetch")
+        AppLogger.d(TAG, "ViewModel initialized, starting data fetch")
         fetchDashboardData()
         startHeroTickerObservation()
     }
@@ -74,7 +74,7 @@ class DashboardViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                Log.d(TAG, "Fetching all market tickers from repository")
+                AppLogger.d(TAG, "Fetching all market tickers from repository")
                 val allTickers = marketDataRepository.getAllTickers()
                 
                 // Fallback if empty
@@ -118,9 +118,9 @@ class DashboardViewModel(
                         isConnected = true
                     )
                 }
-                Log.d(TAG, "Successfully updated dashboard with ${validTickers.size} pairs")
+                AppLogger.d(TAG, "Successfully updated dashboard with ${validTickers.size} pairs")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to fetch dashboard data", e)
+                AppLogger.e(TAG, "Failed to fetch dashboard data: ${e.message}", e)
                 _uiState.update { 
                     it.copy(
                         isLoading = false,
@@ -206,7 +206,7 @@ class DashboardViewModel(
      */
     private fun startHeroTickerObservation() {
         viewModelScope.launch {
-            Log.d(TAG, "Starting continuous observation for hero ticker")
+            AppLogger.d(TAG, "Starting continuous observation for hero ticker")
             marketDataRepository.observeTicker("BTCIDR").collect { updatedTicker ->
                 _uiState.update { state ->
                     val newWatchList = state.watchList.map { 

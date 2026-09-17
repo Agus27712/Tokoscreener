@@ -1,6 +1,6 @@
 package com.tokoreader.data.remote.websocket
 
-import android.util.Log
+import com.tokoreader.data.local.logging.AppLogger
 import okhttp3.*
 import okio.ByteString
 
@@ -19,11 +19,13 @@ class TokocryptoMarketSocket(
     }
 
     fun connect() {
+        AppLogger.i("MarketSocket", "Connecting to Market Stream: $baseUrl")
         val request = Request.Builder().url(baseUrl).build()
         webSocket = client.newWebSocket(request, this)
     }
 
     fun subscribe(streams: List<String>) {
+        AppLogger.i("MarketSocket", "Subscribing to: $streams")
         val payload = """
             {
                 "method": "SUBSCRIBE",
@@ -37,21 +39,18 @@ class TokocryptoMarketSocket(
     }
 
     override fun onOpen(webSocket: WebSocket, response: Response) {
-        Log.d("MarketSocket", "Connected to $baseUrl")
+        AppLogger.i("MarketSocket", "Connected successfully to $baseUrl")
     }
 
     override fun onMessage(webSocket: WebSocket, text: String) {
         // Parse message based on streams (kline, depth, miniTicker, trade)
-        // Log.d("MarketSocket", "Message: $text")
     }
 
     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-        Log.d("MarketSocket", "Closed: $reason")
-        // Trigger reconnect logic here
+        AppLogger.w("MarketSocket", "Closed with code $code: $reason")
     }
 
     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-        Log.e("MarketSocket", "Error: ${t.message}")
-        // Trigger reconnect logic here with backoff
+        AppLogger.e("MarketSocket", "Connection Failure: ${t.message}", t)
     }
 }

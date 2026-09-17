@@ -110,6 +110,13 @@ fun SettingsScreen(
     var tradeNotifications by remember { mutableStateOf(true) }
     var showWipeDialog by remember { mutableStateOf(false) }
     var showApiDialog by remember { mutableStateOf(false) }
+    var showLogcatDialog by remember { mutableStateOf(false) }
+
+    if (showLogcatDialog) {
+        com.tokoreader.presentation.settings.components.InternalLogcatDialog(
+            onDismissRequest = { showLogcatDialog = false }
+        )
+    }
 
     if (showApiDialog) {
         ApiCredentialsDialog(
@@ -652,7 +659,43 @@ fun SettingsScreen(
                 }
             }
 
-            // 7. FOOTER APP INFO
+            // 7. DIAGNOSTIK & SYSTEM LOGS
+            item {
+                SettingsCardContainer(
+                    title = "DIAGNOSTIK & SYSTEM LOGS",
+                    icon = Icons.Default.Timeline
+                ) {
+                    Text(
+                        text = "Real-time Network Diagnostics",
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Gunakan modul ini untuk melacak kegagalan rute jaringan (HTTP 451), lost koneksi WebSocket, atau sinkronisasi data yang blank di jaringan seluler/ISP lokal.",
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Button(
+                        onClick = { showLogcatDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Filled.Bolt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Buka Logcat Monitor", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            // 8. FOOTER APP INFO
             item {
                 Column(
                     modifier = Modifier
