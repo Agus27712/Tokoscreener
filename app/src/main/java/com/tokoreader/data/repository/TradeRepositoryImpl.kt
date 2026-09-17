@@ -1,17 +1,25 @@
 package com.tokoreader.data.repository
 
 import com.tokoreader.data.remote.rest.TokocryptoTradeApi
+import com.tokoreader.data.remote.websocket.TokocryptoUserDataSocket
 import com.tokoreader.domain.model.OcoOrderRequest
 import com.tokoreader.domain.model.OrderRequest
 import com.tokoreader.domain.model.OrderResult
+import com.tokoreader.domain.model.UserDataEvent
 import com.tokoreader.domain.repository.TradeRepository
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import retrofit2.HttpException
 import java.math.BigDecimal
 
 class TradeRepositoryImpl(
-    private val tradeApi: TokocryptoTradeApi
+    private val tradeApi: TokocryptoTradeApi,
+    private val userDataSocket: TokocryptoUserDataSocket
 ) : TradeRepository {
+
+    override fun observeUserDataEvents(symbolType: Int): Flow<UserDataEvent> {
+        return userDataSocket.connect(symbolType)
+    }
 
     override suspend fun placeOrder(request: OrderRequest): Result<OrderResult> {
         return executeWithRetry(maxRetries = 2) {

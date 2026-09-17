@@ -14,22 +14,36 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tokoreader.presentation.components.CryptoUtils
@@ -45,9 +59,32 @@ fun RadarTradeControls(
     currentPrice: Double,
     isUsdtPair: Boolean,
     onSelectNominal: (Double) -> Unit,
+    onManualNominalChange: (String) -> Unit = {},
+    onManualTpChange: (Double?, Double?) -> Unit = { _, _ -> },
+    onToggleManualTp: (Boolean) -> Unit = {},
     onOpenSwapDialog: () -> Unit,
     onExecuteBuy: () -> Unit
 ) {
+    var tp1Input by remember { mutableStateOf("") }
+    var tp2Input by remember { mutableStateOf("") }
+
+    // Sync initial default TP values if manual mode turned on
+    LaunchedEffect(uiState.isManualTp, currentPrice) {
+        if (uiState.isManualTp && currentPrice > 0.0) {
+            if (tp1Input.isBlank()) {
+                val defaultTp1 = currentPrice * 1.015
+                tp1Input = String.format(Locale.US, if (isUsdtPair) "%.4f" else "%.0f", defaultTp1)
+            }
+            if (tp2Input.isBlank()) {
+                val defaultTp2 = currentPrice * 1.030
+                tp2Input = String.format(Locale.US, if (isUsdtPair) "%.4f" else "%.0f", defaultTp2)
+            }
+            val p1 = tp1Input.replace(",", ".").toDoubleOrNull()
+            val p2 = tp2Input.replace(",", ".").toDoubleOrNull()
+            onManualTpChange(p1, p2)
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -57,28 +94,6 @@ fun RadarTradeControls(
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Header: Sequential Validation Flow
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Validasi Alur Sinyal (Step 1-4)",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = if (uiState.step4Pass) "Sinyal Valid ✓" else "Proses Konfirmasi",
-                    color = if (uiState.step4Pass) SuccessGreen else Color(0xFFF59E0B),
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
             SequentialStepperWithProgress(
                 step1Pass = uiState.step1Pass,
                 step1Detail = uiState.step1Detail,
@@ -95,7 +110,7 @@ fun RadarTradeControls(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Balance
+            // Balance Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -131,7 +146,29 @@ fun RadarTradeControls(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Nominal Selection (Dynamically adapts to USDT vs IDR quote currency)
+            // Nominal Selection Section Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Nominal Trading",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = if (isUsdtPair) "$ ${String.format(Locale.US, "%.2f", uiState.selectedNominal)}" else "Rp ${NumberFormat.getNumberInstance(Locale.US).format(uiState.selectedNominal.toLong())}",
+                    color = SuccessGreen,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Nominal Preset Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -155,7 +192,7 @@ fun RadarTradeControls(
                 }
 
                 nominals.forEach { (amount, label) ->
-                    val isSelected = uiState.selectedNominal == amount
+                    val isSelected = !uiState.isCustomNominal && uiState.selectedNominal == amount
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -164,7 +201,7 @@ fun RadarTradeControls(
                                 RoundedCornerShape(6.dp)
                             )
                             .clickable { onSelectNominal(amount) }
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 7.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -177,94 +214,296 @@ fun RadarTradeControls(
                 }
             }
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Manual Nominal Input Field
+            OutlinedTextField(
+                value = uiState.manualNominalInput,
+                onValueChange = { onManualNominalChange(it) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Input Nominal Manual (${if (isUsdtPair) "USDT" else "Rupiah"})", fontSize = 11.sp) },
+                leadingIcon = {
+                    Text(
+                        text = if (isUsdtPair) "  $" else "  Rp",
+                        color = Color(0xFF94A3B8),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                },
+                trailingIcon = {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = "Edit Manual",
+                        tint = if (uiState.isCustomNominal) SuccessGreen else Color(0xFF64748B),
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = SuccessGreen,
+                    unfocusedBorderColor = if (uiState.isCustomNominal) SuccessGreen.copy(alpha = 0.6f) else Color(0xFF334155),
+                    focusedContainerColor = Color(0xFF1E293B),
+                    unfocusedContainerColor = Color(0xFF1E293B)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
+
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Dynamic Targets based on strategy mode (Scalping, Intraday, Swing)
-            val (tp1Percent, tp2Percent, slPercent) = when (uiState.strategyMode) {
-                "Scalping" -> Triple(0.012, 0.025, 0.010)
-                "Intraday" -> Triple(0.025, 0.050, 0.020)
-                "Swing" -> Triple(0.060, 0.120, 0.040)
-                else -> Triple(0.020, 0.045, 0.018)
-            }
-
-            val tp1Price = currentPrice * (1.0 + tp1Percent)
-            val tp2Price = currentPrice * (1.0 + tp2Percent)
-            val tp1EstGain = uiState.selectedNominal * tp1Percent
-            val tp2EstGain = uiState.selectedNominal * tp2Percent
-
-            val tp1GainFormatted = if (isUsdtPair) {
-                "+$ ${String.format(Locale.US, "%.2f", tp1EstGain)}"
-            } else {
-                "+Rp ${NumberFormat.getNumberInstance(Locale.US).format(tp1EstGain.toLong())}"
-            }
-
-            val tp2GainFormatted = if (isUsdtPair) {
-                "+$ ${String.format(Locale.US, "%.2f", tp2EstGain)}"
-            } else {
-                "+Rp ${NumberFormat.getNumberInstance(Locale.US).format(tp2EstGain.toLong())}"
-            }
-
-            val tp1Label = "+${String.format(Locale.US, "%.1f", tp1Percent * 100)}%"
-            val tp2Label = "+${String.format(Locale.US, "%.1f", tp2Percent * 100)}%"
-
+            // Take Profit (TP) Section Header with Auto vs Manual Switch
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Column(modifier = Modifier.padding(8.dp)) {
-                        Text("Entry Live", color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            CryptoUtils.formatCryptoPrice(uiState.symbol, currentPrice),
-                            color = Color.White,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                        Text("${uiState.strategyMode}", color = Color(0xFF64748B), fontSize = 9.sp)
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Take Profit (TP 1 & TP 2)",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Column(modifier = Modifier.padding(8.dp)) {
-                        Text("TP 1 ($tp1Label)", color = SuccessGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            CryptoUtils.formatCryptoPrice(uiState.symbol, tp1Price),
-                            color = SuccessGreen,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                        Text(tp1GainFormatted, color = SuccessGreen.copy(alpha = 0.8f), fontSize = 9.sp, maxLines = 1)
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(
+                        selected = !uiState.isManualTp,
+                        onClick = { onToggleManualTp(false) },
+                        label = { Text("Auto (${uiState.strategyMode})", fontSize = 10.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = Color.White,
+                            containerColor = Color(0xFF1E293B),
+                            labelColor = Color(0xFF94A3B8)
+                        ),
+                        border = BorderStroke(1.dp, if (!uiState.isManualTp) MaterialTheme.colorScheme.primary else Color(0xFF334155)),
+                        modifier = Modifier.height(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    FilterChip(
+                        selected = uiState.isManualTp,
+                        onClick = { onToggleManualTp(true) },
+                        label = { Text("Manual TP", fontSize = 10.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = SuccessGreen,
+                            selectedLabelColor = Color.White,
+                            containerColor = Color(0xFF1E293B),
+                            labelColor = Color(0xFF94A3B8)
+                        ),
+                        border = BorderStroke(1.dp, if (uiState.isManualTp) SuccessGreen else Color(0xFF334155)),
+                        modifier = Modifier.height(28.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Dynamic Targets based on strategy mode (Scalping, Intraday, Swing) or Manual TP
+            if (!uiState.isManualTp) {
+                // Auto Mode Targets
+                val (tp1Percent, tp2Percent) = when (uiState.strategyMode) {
+                    "Scalping" -> Pair(0.012, 0.025)
+                    "Intraday" -> Pair(0.025, 0.050)
+                    "Swing" -> Pair(0.060, 0.120)
+                    else -> Pair(0.020, 0.045)
                 }
 
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    shape = RoundedCornerShape(8.dp)
+                val tp1Price = currentPrice * (1.0 + tp1Percent)
+                val tp2Price = currentPrice * (1.0 + tp2Percent)
+                val tp1EstGain = uiState.selectedNominal * tp1Percent
+                val tp2EstGain = uiState.selectedNominal * tp2Percent
+
+                val tp1GainFormatted = if (isUsdtPair) {
+                    "+$ ${String.format(Locale.US, "%.2f", tp1EstGain)}"
+                } else {
+                    "+Rp ${NumberFormat.getNumberInstance(Locale.US).format(tp1EstGain.toLong())}"
+                }
+
+                val tp2GainFormatted = if (isUsdtPair) {
+                    "+$ ${String.format(Locale.US, "%.2f", tp2EstGain)}"
+                } else {
+                    "+Rp ${NumberFormat.getNumberInstance(Locale.US).format(tp2EstGain.toLong())}"
+                }
+
+                val tp1Label = "+${String.format(Locale.US, "%.1f", tp1Percent * 100)}%"
+                val tp2Label = "+${String.format(Locale.US, "%.1f", tp2Percent * 100)}%"
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Column(modifier = Modifier.padding(8.dp)) {
-                        Text("TP 2 ($tp2Label)", color = SuccessGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            CryptoUtils.formatCryptoPrice(uiState.symbol, tp2Price),
-                            color = SuccessGreen,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                        Text(tp2GainFormatted, color = SuccessGreen.copy(alpha = 0.8f), fontSize = 9.sp, maxLines = 1)
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text("Entry Live", color = Color(0xFF94A3B8), fontSize = 10.sp, maxLines = 1)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                CryptoUtils.formatCryptoPrice(uiState.symbol, currentPrice),
+                                color = Color.White,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                            Text(uiState.strategyMode, color = Color(0xFF64748B), fontSize = 9.sp)
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text("TP 1 ($tp1Label)", color = SuccessGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                CryptoUtils.formatCryptoPrice(uiState.symbol, tp1Price),
+                                color = SuccessGreen,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                            Text(tp1GainFormatted, color = SuccessGreen.copy(alpha = 0.8f), fontSize = 9.sp, maxLines = 1)
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text("TP 2 ($tp2Label)", color = SuccessGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                CryptoUtils.formatCryptoPrice(uiState.symbol, tp2Price),
+                                color = SuccessGreen,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                            Text(tp2GainFormatted, color = SuccessGreen.copy(alpha = 0.8f), fontSize = 9.sp, maxLines = 1)
+                        }
+                    }
+                }
+            } else {
+                // Manual TP Inputs
+                val manualTp1Parsed = tp1Input.replace(",", ".").toDoubleOrNull()
+                val manualTp2Parsed = tp2Input.replace(",", ".").toDoubleOrNull()
+
+                val p1Pct = if (currentPrice > 0.0 && manualTp1Parsed != null) {
+                    ((manualTp1Parsed - currentPrice) / currentPrice) * 100.0
+                } else null
+
+                val p2Pct = if (currentPrice > 0.0 && manualTp2Parsed != null) {
+                    ((manualTp2Parsed - currentPrice) / currentPrice) * 100.0
+                } else null
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // TP 1 Field
+                        Column(modifier = Modifier.weight(1f)) {
+                            OutlinedTextField(
+                                value = tp1Input,
+                                onValueChange = {
+                                    tp1Input = it
+                                    val p1 = it.replace(",", ".").toDoubleOrNull()
+                                    onManualTpChange(p1, manualTp2Parsed)
+                                },
+                                label = { Text("Harga TP 1", fontSize = 10.sp) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = SuccessGreen,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = SuccessGreen,
+                                    unfocusedBorderColor = Color(0xFF334155),
+                                    focusedContainerColor = Color(0xFF1E293B),
+                                    unfocusedContainerColor = Color(0xFF1E293B)
+                                ),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            if (p1Pct != null) {
+                                Text(
+                                    text = if (p1Pct >= 0) "+${String.format(Locale.US, "%.2f", p1Pct)}% Profit" else "${String.format(Locale.US, "%.2f", p1Pct)}%",
+                                    color = if (p1Pct >= 0) SuccessGreen else ErrorRed,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 2.dp, start = 4.dp)
+                                )
+                            }
+                        }
+
+                        // TP 2 Field
+                        Column(modifier = Modifier.weight(1f)) {
+                            OutlinedTextField(
+                                value = tp2Input,
+                                onValueChange = {
+                                    tp2Input = it
+                                    val p2 = it.replace(",", ".").toDoubleOrNull()
+                                    onManualTpChange(manualTp1Parsed, p2)
+                                },
+                                label = { Text("Harga TP 2", fontSize = 10.sp) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = SuccessGreen,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = SuccessGreen,
+                                    unfocusedBorderColor = Color(0xFF334155),
+                                    focusedContainerColor = Color(0xFF1E293B),
+                                    unfocusedContainerColor = Color(0xFF1E293B)
+                                ),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            if (p2Pct != null) {
+                                Text(
+                                    text = if (p2Pct >= 0) "+${String.format(Locale.US, "%.2f", p2Pct)}% Profit" else "${String.format(Locale.US, "%.2f", p2Pct)}%",
+                                    color = if (p2Pct >= 0) SuccessGreen else ErrorRed,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 2.dp, start = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Quick Percentage chips to set TP easily
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(0.01 to "+1%", 0.02 to "+2%", 0.03 to "+3%", 0.05 to "+5%").forEach { (pct, label) ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF1E293B))
+                                    .clickable {
+                                        if (currentPrice > 0.0) {
+                                            val t1 = currentPrice * (1.0 + pct)
+                                            val t2 = currentPrice * (1.0 + pct * 2.0)
+                                            tp1Input = String.format(Locale.US, if (isUsdtPair) "%.4f" else "%.0f", t1)
+                                            tp2Input = String.format(Locale.US, if (isUsdtPair) "%.4f" else "%.0f", t2)
+                                            onManualTpChange(t1, t2)
+                                        }
+                                    }
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(text = label, color = Color(0xFF94A3B8), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }

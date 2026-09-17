@@ -1,7 +1,9 @@
 package com.tokoreader.presentation.radar
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.TrendingDown
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Speed
@@ -38,13 +38,16 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,6 +61,8 @@ import com.tokoreader.presentation.chart.ProperMiniCandleChart
 import com.tokoreader.presentation.components.CryptoUtils
 import com.tokoreader.presentation.components.LivePriceFlashText
 import com.tokoreader.presentation.components.LiveTickFlashBadge
+import com.tokoreader.presentation.components.SmoothPriceCounterText
+import com.tokoreader.presentation.radar.components.LiveAskBidPressureSection
 import com.tokoreader.presentation.radar.components.RadarPositionSummaryCard
 import com.tokoreader.presentation.radar.components.RadarSwapDialog
 import com.tokoreader.presentation.radar.components.RadarTradeControls
@@ -66,6 +71,7 @@ import com.tokoreader.presentation.radar.components.SnapshotChip
 import com.tokoreader.presentation.radar.components.StatBox
 import com.tokoreader.ui.theme.ErrorRed
 import com.tokoreader.ui.theme.SuccessGreen
+import java.text.NumberFormat
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -147,7 +153,34 @@ fun RadarTradeScreen(
         )
     }
 
+    // System back button handler
+    BackHandler { onBackClick() }
+
+    // Swipe-back gesture detection (drag from left to right)
+    val density = LocalDensity.current
+    val swipeThresholdPx = with(density) { 90.dp.toPx() }
+    var totalDragX by remember { mutableFloatStateOf(0f) }
+
     Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDragX = 0f },
+                    onDragEnd = {
+                        if (totalDragX > swipeThresholdPx) {
+                            onBackClick()
+                        }
+                        totalDragX = 0f
+                    },
+                    onDragCancel = { totalDragX = 0f },
+                    onHorizontalDrag = { _, dragAmount ->
+                        if (dragAmount > 0f || totalDragX > 0f) {
+                            totalDragX += dragAmount
+                        }
+                    }
+                )
+            },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -161,18 +194,13 @@ fun RadarTradeScreen(
                 },
                 title = {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp)
+                        modifier = Modifier.padding(vertical = 2.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = uiState.symbol,
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 16.5.sp,
+                                fontSize = 16.sp,
                                 color = MaterialTheme.colorScheme.onBackground,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -284,7 +312,7 @@ fun RadarTradeScreen(
                 }
             }
 
-            // Real Live Price Section with Tick Color Flash
+            // Real Live Price Section with Tick Color Flash & Smooth Counter
             item {
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Row(
@@ -292,33 +320,42 @@ fun RadarTradeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        LivePriceFlashText(
+                        SmoothPriceCounterText(
                             price = currentPrice,
                             symbol = uiState.symbol,
-                            tickDirection = ticker?.tickDirection ?: PriceTickDirection.NEUTRAL,
                             fontSize = 29.sp,
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.ExtraBold,
+                            defaultColor = if (isPriceUp) SuccessGreen else ErrorRed
                         )
                         LiveTickFlashBadge(
                             tickDirection = ticker?.tickDirection ?: PriceTickDirection.NEUTRAL
                         )
                     }
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (isPriceUp) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
-                            contentDescription = "Trend",
-                            tint = if (isPriceUp) SuccessGreen else ErrorRed,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "${if (isPriceUp) "+" else ""}${String.format(Locale.US, "%.2f", ticker?.priceChangePercent ?: 0.0)}% (24j)",
-                            color = if (isPriceUp) SuccessGreen else ErrorRed,
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    if (isUsdtPair && currentPrice > 0.0) {
+                        val idrEquivalent = currentPrice * uiState.usdtRate
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "≈ Rp ${NumberFormat.getNumberInstance(Locale.US).format(idrEquivalent.toLong())}",
+                                color = Color(0xFF38BDF8),
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "(Kurs Rp ${NumberFormat.getNumberInstance(Locale.US).format(uiState.usdtRate.toLong())})",
+                                color = Color(0xFF64748B),
+                                fontSize = 10.sp
+                            )
+                        }
                     }
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = "${if (isPriceUp) "+" else ""}${String.format(Locale.US, "%.2f", ticker?.priceChangePercent ?: 0.0)}% (24j)",
+                        color = if (isPriceUp) SuccessGreen else ErrorRed,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
@@ -336,28 +373,12 @@ fun RadarTradeScreen(
                 }
             }
 
-            // Live Orderbook Pressure Bar
+            // Live Orderbook Pressure Bar with Smooth Loading Animation
             item {
-                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                    val bidPercent = (uiState.bidPressure * 100).toInt()
-                    val askPercent = 100 - bidPercent
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Tekanan Beli: $bidPercent%", color = SuccessGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text("Tekanan Jual: $askPercent%", color = ErrorRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = { uiState.bidPressure },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp),
-                        color = SuccessGreen,
-                        trackColor = ErrorRed,
-                    )
-                }
+                LiveAskBidPressureSection(
+                    bidPressure = uiState.bidPressure,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
             }
 
             // Chart Section: Proper Candlestick Mini Chart with interval selector & TradingView launcher
@@ -395,6 +416,9 @@ fun RadarTradeScreen(
                         currentPrice = currentPrice,
                         isUsdtPair = isUsdtPair,
                         onSelectNominal = { viewModel.selectNominal(it) },
+                        onManualNominalChange = { viewModel.setManualNominal(it) },
+                        onManualTpChange = { tp1, tp2 -> viewModel.setManualTp(tp1, tp2) },
+                        onToggleManualTp = { viewModel.toggleManualTp(it) },
                         onOpenSwapDialog = {
                             swapDirectionToUsdt = !isUsdtPair || uiState.paperBalanceUsdt < 10.0
                             showSwapDialog = true

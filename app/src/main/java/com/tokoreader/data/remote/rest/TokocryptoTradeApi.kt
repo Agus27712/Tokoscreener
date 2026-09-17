@@ -4,6 +4,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Query
 
 interface TokocryptoTradeApi {
@@ -30,7 +31,7 @@ interface TokocryptoTradeApi {
     ): OrderResponse
 
     @Headers("Signed: true")
-    @DELETE("open/v1/orders")
+    @POST("open/v1/orders/cancel")
     suspend fun cancelOrder(
         @Query("symbol") symbol: String,
         @Query("orderId") orderId: String
@@ -50,7 +51,28 @@ interface TokocryptoTradeApi {
     @Headers("Signed: true")
     @POST("open/v1/user-data-stream")
     suspend fun createListenKey(): ListenKeyResponse
+
+    @Headers("Signed: true")
+    @PUT("open/v1/user-data-stream")
+    suspend fun keepAliveListenKey(@Query("listenKey") listenKey: String): OrderResponse
+
+    @Headers("Signed: true")
+    @DELETE("open/v1/user-data-stream")
+    suspend fun closeListenKey(@Query("listenKey") listenKey: String): OrderResponse
+
+    @GET("open/v1/common/symbols")
+    suspend fun getSymbols(): SymbolsResponse
 }
+
+data class SymbolsResponse(val code: Int, val msg: String?, val data: List<SymbolInfo>?)
+
+data class SymbolInfo(
+    val symbol: String,
+    val type: Int, // 1 = MBX, 3 = NextMe
+    val baseAsset: String?,
+    val quoteAsset: String?,
+    val filters: List<Map<String, Any>>?
+)
 
 data class OrderResponse(
     val code: Int,

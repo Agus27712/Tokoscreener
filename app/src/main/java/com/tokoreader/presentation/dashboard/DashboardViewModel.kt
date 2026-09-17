@@ -38,6 +38,8 @@ data class DashboardUiState(
     val heroTicker: Ticker? = null,
     val rawTickers: List<Ticker> = emptyList(),
     val watchList: List<Ticker> = emptyList(),
+    val customSymbols: Set<String> = emptySet(),
+    val availableTokocryptoSymbols: List<com.tokoreader.data.remote.rest.SymbolInfo> = emptyList(),
     val selectedQuote: QuoteFilter = QuoteFilter.ALL,
     val selectedSort: SortOption = SortOption.DEFAULT,
     val totalPairsScanned: Int = 0,
@@ -53,7 +55,8 @@ data class DashboardUiState(
  * Keeps business logic modular and separate from UI components.
  */
 class DashboardViewModel(
-    private val marketDataRepository: com.tokoreader.domain.repository.MarketDataRepository
+    private val marketDataRepository: com.tokoreader.domain.repository.MarketDataRepository,
+    private val settingsRepository: com.tokoreader.domain.repository.SettingsRepository
 ) : ViewModel() {
 
     private val TAG = "DashboardViewModel"
@@ -63,8 +66,67 @@ class DashboardViewModel(
 
     init {
         AppLogger.d(TAG, "ViewModel initialized, starting data fetch")
+        observeCustomSymbols()
         fetchDashboardData()
+        loadTokocryptoSymbols()
         startHeroTickerObservation()
+    }
+
+    private fun observeCustomSymbols() {
+        viewModelScope.launch {
+            settingsRepository.getCustomWatchlistSymbols().collect { customs ->
+                _uiState.update { state ->
+                    val updatedWatch = computeWatchList(
+                        state.rawTickers,
+                        state.heroTicker?.symbol,
+                        state.selectedQuote,
+                        state.selectedSort,
+                        customs
+                    )
+                    state.copy(customSymbols = customs, watchList = updatedWatch)
+                }
+            }
+        }
+    }
+
+    fun loadTokocryptoSymbols() {
+        viewModelScope.launch {
+            try {
+                val symbols = marketDataRepository.getTokocryptoSymbols()
+                _uiState.update { it.copy(availableTokocryptoSymbols = symbols) }
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Gagal memuat list simbol resmi Tokocrypto: ${e.message}")
+            }
+        }
+    }
+
+    fun addCustomCoin(symbol: String) {
+        val sym = symbol.trim().uppercase()
+        viewModelScope.launch {
+            try {
+                settingsRepository.addCustomWatchlistSymbol(sym)
+                // If ticker not present in rawTickers, fetch single ticker
+                if (_uiState.value.rawTickers.none { it.symbol == sym }) {
+                    try {
+                        marketDataRepository.getAllTickers() // Will refresh cache
+                        fetchDashboardData()
+                    } catch (_: Exception) {}
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Gagal menambahkan koin ke watchlist: ${e.message}")
+            }
+        }
+    }
+
+    fun removeCustomCoin(symbol: String) {
+        val sym = symbol.trim().uppercase()
+        viewModelScope.launch {
+            try {
+                settingsRepository.removeCustomWatchlistSymbol(sym)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Gagal menghapus koin dari watchlist: ${e.message}")
+            }
+        }
     }
 
     /**
@@ -103,7 +165,8 @@ class DashboardViewModel(
 
                 val currentQuote = _uiState.value.selectedQuote
                 val currentSort = _uiState.value.selectedSort
-                val filteredWatchList = computeWatchList(validTickers, hero?.symbol, currentQuote, currentSort)
+                val customs = _uiState.value.customSymbols
+                val filteredWatchList = computeWatchList(validTickers, hero?.symbol, currentQuote, currentSort, customs)
 
                 _uiState.update { 
                     it.copy(
@@ -136,7 +199,8 @@ class DashboardViewModel(
         val heroSym = _uiState.value.heroTicker?.symbol
         val raw = _uiState.value.rawTickers
         val sort = _uiState.value.selectedSort
-        val newWatchlist = computeWatchList(raw, heroSym, quote, sort)
+        val customs = _uiState.value.customSymbols
+        val newWatchlist = computeWatchList(raw, heroSym, quote, sort, customs)
         _uiState.update {
             it.copy(
                 selectedQuote = quote,
@@ -149,7 +213,8 @@ class DashboardViewModel(
         val heroSym = _uiState.value.heroTicker?.symbol
         val raw = _uiState.value.rawTickers
         val quote = _uiState.value.selectedQuote
-        val newWatchlist = computeWatchList(raw, heroSym, quote, sort)
+        val customs = _uiState.value.customSymbols
+        val newWatchlist = computeWatchList(raw, heroSym, quote, sort, customs)
         _uiState.update {
             it.copy(
                 selectedSort = sort,
@@ -162,7 +227,8 @@ class DashboardViewModel(
         rawList: List<Ticker>,
         heroSymbol: String?,
         quote: QuoteFilter,
-        sort: SortOption
+        sort: SortOption,
+        customSymbols: Set<String> = emptySet()
     ): List<Ticker> {
         val filtered = rawList.filter { ticker ->
             val sym = ticker.symbol
@@ -182,10 +248,11 @@ class DashboardViewModel(
             "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "BNBUSDT", "ADAUSDT", "PEPEUSDT", "SHIBUSDT"
         )
 
-        return when (sort) {
+        val sortedList = when (sort) {
             SortOption.DEFAULT -> {
                 filtered.sortedWith(
-                    compareByDescending<Ticker> { preferredSymbols.contains(it.symbol) }
+                    compareByDescending<Ticker> { customSymbols.contains(it.symbol) }
+                        .thenByDescending { preferredSymbols.contains(it.symbol) }
                         .thenBy { 
                             val idx = preferredSymbols.indexOf(it.symbol)
                             if (idx >= 0) idx else Int.MAX_VALUE 
@@ -193,12 +260,40 @@ class DashboardViewModel(
                         .thenByDescending { it.volume24h }
                 )
             }
-            SortOption.VOLUME -> filtered.sortedByDescending { it.volume24h }
-            SortOption.GAINERS -> filtered.sortedByDescending { it.priceChangePercent }
-            SortOption.LOSERS -> filtered.sortedBy { it.priceChangePercent }
-            SortOption.PRICE_DESC -> filtered.sortedByDescending { it.price }
-            SortOption.PRICE_ASC -> filtered.sortedBy { it.price }
+            SortOption.VOLUME -> {
+                filtered.sortedWith(
+                    compareByDescending<Ticker> { customSymbols.contains(it.symbol) }
+                        .thenByDescending { it.volume24h }
+                )
+            }
+            SortOption.GAINERS -> {
+                filtered.sortedWith(
+                    compareByDescending<Ticker> { customSymbols.contains(it.symbol) }
+                        .thenByDescending { it.priceChangePercent }
+                )
+            }
+            SortOption.LOSERS -> {
+                filtered.sortedWith(
+                    compareByDescending<Ticker> { customSymbols.contains(it.symbol) }
+                        .thenBy { it.priceChangePercent }
+                )
+            }
+            SortOption.PRICE_DESC -> {
+                filtered.sortedWith(
+                    compareByDescending<Ticker> { customSymbols.contains(it.symbol) }
+                        .thenByDescending { it.price }
+                )
+            }
+            SortOption.PRICE_ASC -> {
+                filtered.sortedWith(
+                    compareByDescending<Ticker> { customSymbols.contains(it.symbol) }
+                        .thenBy { it.price }
+                )
+            }
         }
+
+        // Strict requirement: Maksimal hanya 30 koin saja per kategori
+        return sortedList.take(30)
     }
 
     /**
@@ -231,7 +326,11 @@ class DashboardViewModel(
             initializer {
                 val application = (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as TokoReaderApp)
                 val repository = application.container.marketDataRepository
-                DashboardViewModel(marketDataRepository = repository)
+                val settingsRepo = application.container.settingsRepository
+                DashboardViewModel(
+                    marketDataRepository = repository,
+                    settingsRepository = settingsRepo
+                )
             }
         }
     }

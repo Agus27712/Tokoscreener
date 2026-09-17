@@ -10,6 +10,7 @@ import com.tokoreader.data.local.prefs.SettingsRepositoryImpl
 import com.tokoreader.data.remote.rest.TokocryptoMarketApi
 import com.tokoreader.data.remote.rest.TokocryptoTradeApi
 import com.tokoreader.data.remote.signing.SigningInterceptor
+import com.tokoreader.data.remote.websocket.TokocryptoUserDataSocket
 import com.tokoreader.data.repository.MarketDataRepositoryImpl
 import com.tokoreader.data.repository.PaperTradeRepositoryImpl
 import com.tokoreader.data.repository.PositionRepositoryImpl
@@ -84,14 +85,8 @@ class DynamicMarketUrlInterceptor(private val settingsRepository: SettingsReposi
  * Interceptor that automatically falls back to alternative Binance / Tokocrypto hosts
  * when encountering HTTP 451 (geo-restrictions), 403, timeouts, or connection failures.
  */
-class FallbackHostInterceptor : Interceptor {
+class FallbackHostInterceptor(private val settingsRepository: SettingsRepository) : Interceptor {
     private val TAG = "FallbackInterceptor"
-
-    private val candidateHosts = listOf(
-        "www.tokocrypto.site",
-        "data-api.binance.vision",
-        "api.binance.com"
-    )
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
@@ -100,6 +95,28 @@ class FallbackHostInterceptor : Interceptor {
                 originalRequest.url.port == 9443
         if (isWebSocket) {
             return chain.proceed(originalRequest)
+        }
+
+        val symbolType = settingsRepository.getCurrentSymbolType()
+        val originalHost = originalRequest.url.host
+
+        val candidateHosts = mutableListOf<String>()
+        candidateHosts.add(originalHost)
+
+        if (symbolType == 3) {
+            if (originalHost != "cloudme-toko.2meta.app") {
+                candidateHosts.add("cloudme-toko.2meta.app")
+            }
+            if (originalHost != "www.tokocrypto.site") {
+                candidateHosts.add("www.tokocrypto.site")
+            }
+        } else {
+            if (originalHost != "data-api.binance.vision") {
+                candidateHosts.add("data-api.binance.vision")
+            }
+            if (originalHost != "api.binance.com") {
+                candidateHosts.add("api.binance.com")
+            }
         }
 
         var lastException: IOException? = null
@@ -144,6 +161,59 @@ class FallbackHostInterceptor : Interceptor {
 }
 
 /**
+ * Interceptor for Tokocrypto Trade/Account API endpoints that automatically retries
+ * candidate hosts (www.tokocrypto.com, www.tokocrypto.site, cloudme-toko.2meta.app)
+ * upon HTTP 451 / 403 / 502 errors.
+ */
+class TradeHostFallbackInterceptor : Interceptor {
+    private val TAG = "TradeHostFallback"
+    private val candidateHosts = listOf("www.tokocrypto.com", "www.tokocrypto.site", "cloudme-toko.2meta.app")
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val originalRequest = chain.request()
+        val originalHost = originalRequest.url.host
+
+        val hostsToTry = mutableListOf<String>()
+        hostsToTry.add(originalHost)
+        candidateHosts.forEach { host ->
+            if (host != originalHost) hostsToTry.add(host)
+        }
+
+        var lastResponse: Response? = null
+        var lastException: IOException? = null
+
+        for (host in hostsToTry) {
+            val newUrl = originalRequest.url.newBuilder().host(host).build()
+            val newRequest = originalRequest.newBuilder().url(newUrl).build()
+
+            try {
+                val response = chain.proceed(newRequest)
+                if (response.isSuccessful) {
+                    return response
+                }
+                if (response.code == 451 || response.code == 403 || response.code == 502 || response.code == 503) {
+                    AppLogger.w(TAG, "Trade host $host returned HTTP ${response.code}, trying next host...")
+                    response.close()
+                    lastResponse = response
+                    continue
+                }
+                return response
+            } catch (e: IOException) {
+                if (chain.call().isCanceled() || e.message?.contains("cancel", ignoreCase = true) == true) {
+                    throw e
+                }
+                AppLogger.w(TAG, "Trade host $host connection failed (${e.message})")
+                lastException = e
+            }
+        }
+
+        if (lastResponse != null) return lastResponse
+        val ex = lastException ?: IOException("All candidate trade hosts exhausted")
+        throw ex
+    }
+}
+
+/**
  * Manual Dependency Injection Container.
  */
 class AppContainer(context: Context) {
@@ -165,15 +235,18 @@ class AppContainer(context: Context) {
     // 3. OkHttp Clients
     private val marketOkHttpClient = OkHttpClient.Builder()
         .addInterceptor(DynamicMarketUrlInterceptor(settingsRepository))
-        .addInterceptor(FallbackHostInterceptor())
+        .addInterceptor(FallbackHostInterceptor(settingsRepository))
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .pingInterval(15, TimeUnit.SECONDS)
         .build()
 
     private val tradeOkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(TradeHostFallbackInterceptor())
         .addInterceptor(SigningInterceptor(settingsRepository))
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .pingInterval(15, TimeUnit.SECONDS)
         .build()
 
     // 4. Retrofit Instances
@@ -194,14 +267,15 @@ class AppContainer(context: Context) {
     val tradeApi: TokocryptoTradeApi = tradeRetrofit.create(TokocryptoTradeApi::class.java)
 
     // 6. Repositories
-    val marketDataRepository = MarketDataRepositoryImpl(marketApi, marketOkHttpClient)
+    val marketDataRepository = MarketDataRepositoryImpl(marketApi, tradeApi, settingsRepository, marketOkHttpClient, context)
     val positionRepository = PositionRepositoryImpl(database.positionDao())
     val paperTradeRepository = PaperTradeRepositoryImpl(
         database.paperAccountDao(),
         database.positionDao(),
         database.localOrderDao()
     )
-    val tradeRepository = TradeRepositoryImpl(tradeApi)
+    val userDataSocket = TokocryptoUserDataSocket(tradeApi, tradeOkHttpClient)
+    val tradeRepository = TradeRepositoryImpl(tradeApi, userDataSocket)
 
     // 7. Evaluators & UseCases
     val evaluators = mapOf(

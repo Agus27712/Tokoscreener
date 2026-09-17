@@ -5,12 +5,14 @@ import kotlinx.coroutines.flow.Flow
 
 interface MarketDataRepository {
     fun observeClosedCandles(symbol: String, timeframe: String): Flow<List<Kline>>
+    fun observeCandlesWithLive(symbol: String, timeframe: String): Flow<List<Kline>>
     fun observeOrderBook(symbol: String): Flow<OrderBookSnapshot>
     fun observeTicker(symbol: String): Flow<Ticker>
     suspend fun getKlines(symbol: String, interval: String, limit: Int = 30): List<Kline>
     suspend fun getSymbolFilters(symbol: String): SymbolFilter?
     suspend fun getAllIdrTickers(): List<Ticker>
     suspend fun getAllTickers(): List<Ticker>
+    suspend fun getTokocryptoSymbols(): List<com.tokoreader.data.remote.rest.SymbolInfo>
 }
 
 interface PositionRepository {
@@ -36,4 +38,5 @@ interface TradeRepository {
     suspend fun placeOrder(request: OrderRequest): Result<OrderResult>
     suspend fun placeOcoOrder(request: OcoOrderRequest): Result<OrderResult>
     suspend fun cancelOrder(symbol: String, orderId: String): Result<Boolean>
+    fun observeUserDataEvents(symbolType: Int): Flow<UserDataEvent>
 }

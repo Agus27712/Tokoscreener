@@ -51,6 +51,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tokoreader.TokoReaderApp
 import com.tokoreader.presentation.chart.FullscreenTradingViewDialog
 import com.tokoreader.presentation.components.SnapshotBlock
+import com.tokoreader.presentation.dashboard.components.AddCoinDialog
 import com.tokoreader.presentation.dashboard.components.DashboardHeroCard
 import com.tokoreader.presentation.dashboard.components.DashboardWatchlistFilterHeader
 import com.tokoreader.presentation.dashboard.components.WatchlistItemCard
@@ -61,12 +62,24 @@ import com.tokoreader.ui.theme.SuccessGreen
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel = viewModel(factory = DashboardViewModel.Factory),
-    onNavigateToRadar: (String) -> Unit = {}
+    onNavigateToDetail: (String) -> Unit = {},
+    onNavigateToRadar: (String) -> Unit = onNavigateToDetail
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val repository = remember(context) { (context.applicationContext as TokoReaderApp).container.marketDataRepository }
     var selectedChartSymbol by remember { mutableStateOf<String?>(null) }
+    var showAddCoinDialog by remember { mutableStateOf(false) }
+
+    if (showAddCoinDialog) {
+        AddCoinDialog(
+            availableSymbols = uiState.availableTokocryptoSymbols,
+            customSymbols = uiState.customSymbols,
+            onAddCoin = { viewModel.addCustomCoin(it) },
+            onRemoveCoin = { viewModel.removeCustomCoin(it) },
+            onDismiss = { showAddCoinDialog = false }
+        )
+    }
 
     if (selectedChartSymbol != null) {
         FullscreenTradingViewDialog(
@@ -192,7 +205,7 @@ fun DashboardScreen(
                     DashboardHeroCard(
                         hero = hero,
                         marketDataRepository = repository,
-                        onClick = { onNavigateToRadar(hero.symbol) }
+                        onClick = { onNavigateToDetail(hero.symbol) }
                     )
                 }
             }
@@ -203,7 +216,8 @@ fun DashboardScreen(
                     selectedQuote = uiState.selectedQuote,
                     selectedSort = uiState.selectedSort,
                     onQuoteSelected = { viewModel.setQuoteFilter(it) },
-                    onSortSelected = { viewModel.setSortOption(it) }
+                    onSortSelected = { viewModel.setSortOption(it) },
+                    onOpenAddCoinDialog = { showAddCoinDialog = true }
                 )
             }
 
@@ -237,7 +251,7 @@ fun DashboardScreen(
                     val ticker = uiState.watchList[index]
                     WatchlistItemCard(
                         ticker = ticker,
-                        onClick = { onNavigateToRadar(ticker.symbol) }
+                        onClick = { onNavigateToDetail(ticker.symbol) }
                     )
                 }
             }

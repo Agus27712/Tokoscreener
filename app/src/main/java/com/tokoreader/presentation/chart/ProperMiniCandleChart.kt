@@ -77,7 +77,7 @@ fun ProperMiniCandleChart(
         } catch (_: Exception) {}
 
         // Observe continuous WebSocket updates
-        marketDataRepository.observeClosedCandles(symbol, selectedInterval).collectLatest { klines ->
+        marketDataRepository.observeCandlesWithLive(symbol, selectedInterval).collectLatest { klines ->
             if (klines.isNotEmpty()) {
                 allCandles = klines
                 isLoading = false
@@ -214,7 +214,9 @@ fun ProperMiniCandleChart(
                                     onPress = { tapOffset ->
                                         crosshairOffset = tapOffset
                                         val baseCandleCount = 26
-                                        val visibleCount = ((baseCandleCount / zoomScale).toInt()).coerceIn(8, allCandles.size)
+                                        val minAllowed = minOf(8, allCandles.size).coerceAtLeast(1)
+                                        val maxAllowed = allCandles.size.coerceAtLeast(minAllowed)
+                                        val visibleCount = ((baseCandleCount / zoomScale).toInt()).coerceIn(minAllowed, maxAllowed)
                                         val candles = allCandles.takeLast(visibleCount)
                                         if (candles.isNotEmpty()) {
                                             val candleWidth = size.width / candles.size
@@ -225,7 +227,9 @@ fun ProperMiniCandleChart(
                                     onTap = { tapOffset ->
                                         crosshairOffset = tapOffset
                                         val baseCandleCount = 26
-                                        val visibleCount = ((baseCandleCount / zoomScale).toInt()).coerceIn(8, allCandles.size)
+                                        val minAllowed = minOf(8, allCandles.size).coerceAtLeast(1)
+                                        val maxAllowed = allCandles.size.coerceAtLeast(minAllowed)
+                                        val visibleCount = ((baseCandleCount / zoomScale).toInt()).coerceIn(minAllowed, maxAllowed)
                                         val candles = allCandles.takeLast(visibleCount)
                                         if (candles.isNotEmpty()) {
                                             val candleWidth = size.width / candles.size
@@ -241,16 +245,26 @@ fun ProperMiniCandleChart(
 
                         // Spacious uncrowded display: 24-28 candles visible by default on mobile
                         val baseCandleCount = 26
-                        val visibleCount = ((baseCandleCount / zoomScale).toInt()).coerceIn(8, allCandles.size)
+                        val minAllowed = minOf(8, allCandles.size).coerceAtLeast(1)
+                        val maxAllowed = allCandles.size.coerceAtLeast(minAllowed)
+                        val visibleCount = ((baseCandleCount / zoomScale).toInt()).coerceIn(minAllowed, maxAllowed)
                         
                         // Calculate candle window with panning
                         val maxPanCandles = (allCandles.size - visibleCount).coerceAtLeast(0)
-                        val candleStep = width / visibleCount
-                        val panShiftCandles = (-panOffsetX / candleStep).toInt().coerceIn(-maxPanCandles, 0)
+                        val candleStep = (width / visibleCount).coerceAtLeast(1f)
+                        val panShiftCandles = if (maxPanCandles > 0) {
+                            (-panOffsetX / candleStep).toInt().coerceIn(-maxPanCandles, 0)
+                        } else {
+                            0
+                        }
                         val endIndex = (allCandles.size + panShiftCandles).coerceIn(visibleCount, allCandles.size)
                         val startIndex = (endIndex - visibleCount).coerceAtLeast(0)
 
-                        val candles = allCandles.subList(startIndex, endIndex)
+                        val candles = if (startIndex <= endIndex && endIndex <= allCandles.size) {
+                            allCandles.subList(startIndex, endIndex)
+                        } else {
+                            allCandles.takeLast(visibleCount)
+                        }
                         val count = candles.size
                         if (count < 2) return@Canvas
 

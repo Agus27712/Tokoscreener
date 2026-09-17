@@ -47,6 +47,8 @@ fun MainAppScreen() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    val isDetailScreen = currentRoute?.startsWith("detail/") == true || currentRoute?.startsWith("radar/") == true || currentRoute == "radar"
+
     // Handle back button smoothly to prevent accidental app exits from other main tabs
     if (currentRoute != null && currentRoute != "dashboard") {
         BackHandler {
@@ -63,55 +65,45 @@ fun MainAppScreen() {
     TokoReaderTheme(themeMode = themeMode, accentColor = accentColor) {
         Scaffold(
             bottomBar = {
-                NavigationBar {
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Dashboard, contentDescription = "Dashboard") },
-                        label = { Text("Dashboard") },
-                        selected = currentRoute == "dashboard",
-                        onClick = {
-                            navController.navigate("dashboard") {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                if (!isDetailScreen) {
+                    NavigationBar {
+                        NavigationBarItem(
+                            icon = { Icon(Icons.Filled.Dashboard, contentDescription = "Dashboard") },
+                            label = { Text("Dashboard") },
+                            selected = currentRoute == "dashboard",
+                            onClick = {
+                                navController.navigate("dashboard") {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
-                        }
-                    )
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Filled.PieChart, contentDescription = "Portfolio") },
-                        label = { Text("Portfolio") },
-                        selected = currentRoute == "portfolio",
-                        onClick = {
-                            navController.navigate("portfolio") {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                        )
+                        NavigationBarItem(
+                            icon = { Icon(Icons.Filled.PieChart, contentDescription = "Portfolio") },
+                            label = { Text("Portfolio") },
+                            selected = currentRoute == "portfolio",
+                            onClick = {
+                                navController.navigate("portfolio") {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
-                        }
-                    )
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Radar, contentDescription = "Radar") },
-                        label = { Text("Radar") },
-                        selected = currentRoute == "radar" || currentRoute?.startsWith("radar/") == true,
-                        onClick = {
-                            navController.navigate("radar") {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                        )
+                        NavigationBarItem(
+                            icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
+                            label = { Text("Settings") },
+                            selected = currentRoute == "settings",
+                            onClick = {
+                                navController.navigate("settings") {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
-                        }
-                    )
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") },
-                        selected = currentRoute == "settings",
-                        onClick = {
-                            navController.navigate("settings") {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         ) { innerPadding ->
@@ -146,15 +138,19 @@ fun MainAppScreen() {
             ) {
                 composable("dashboard") {
                     DashboardScreen(
-                        onNavigateToRadar = { symbol ->
-                            navController.navigate("radar/$symbol")
+                        onNavigateToDetail = { symbol ->
+                            navController.navigate("detail/$symbol")
                         }
                     )
                 }
                 composable("portfolio") { PortfolioScreen() }
-                composable("radar") {
+                composable(
+                    route = "detail/{symbol}",
+                    arguments = listOf(navArgument("symbol") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val symbol = backStackEntry.arguments?.getString("symbol") ?: "BTCIDR"
                     RadarTradeScreen(
-                        initialSymbol = "BTCIDR",
+                        initialSymbol = symbol,
                         onBackClick = {
                             if (!navController.popBackStack()) {
                                 navController.navigate("dashboard")
@@ -162,6 +158,7 @@ fun MainAppScreen() {
                         }
                     )
                 }
+                // Backwards compatibility alias for radar
                 composable(
                     route = "radar/{symbol}",
                     arguments = listOf(navArgument("symbol") { type = NavType.StringType })
@@ -169,6 +166,16 @@ fun MainAppScreen() {
                     val symbol = backStackEntry.arguments?.getString("symbol") ?: "BTCIDR"
                     RadarTradeScreen(
                         initialSymbol = symbol,
+                        onBackClick = {
+                            if (!navController.popBackStack()) {
+                                navController.navigate("dashboard")
+                            }
+                        }
+                    )
+                }
+                composable("radar") {
+                    RadarTradeScreen(
+                        initialSymbol = "BTCIDR",
                         onBackClick = {
                             if (!navController.popBackStack()) {
                                 navController.navigate("dashboard")

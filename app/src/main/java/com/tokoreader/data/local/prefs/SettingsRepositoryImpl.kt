@@ -39,6 +39,7 @@ class SettingsRepositoryImpl(private val context: Context) : SettingsRepository 
     private val REAL_BUY_MODE = booleanPreferencesKey("real_buy_mode")
     private val API_CRED_UPDATE_KEY = longPreferencesKey("api_cred_updated_at")
     private val SYMBOL_TYPE_PREF_KEY = "tokocrypto_symbol_type"
+    private val CUSTOM_WATCHLIST_KEY = stringSetPreferencesKey("custom_watchlist_symbols")
 
     override fun getApiCredentials(): Flow<ApiCredentials> = context.dataStore.data.map {
         // We trigger flow emit, but read actual secure keys from EncryptedPrefs
@@ -130,5 +131,23 @@ class SettingsRepositoryImpl(private val context: Context) : SettingsRepository 
 
     override fun getCurrentSymbolType(): Int {
         return securePrefs.getInt(SYMBOL_TYPE_PREF_KEY, 1)
+    }
+
+    override fun getCustomWatchlistSymbols(): Flow<Set<String>> = context.dataStore.data.map {
+        it[CUSTOM_WATCHLIST_KEY] ?: emptySet()
+    }
+
+    override suspend fun addCustomWatchlistSymbol(symbol: String) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[CUSTOM_WATCHLIST_KEY] ?: emptySet()
+            preferences[CUSTOM_WATCHLIST_KEY] = current + symbol.uppercase()
+        }
+    }
+
+    override suspend fun removeCustomWatchlistSymbol(symbol: String) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[CUSTOM_WATCHLIST_KEY] ?: emptySet()
+            preferences[CUSTOM_WATCHLIST_KEY] = current - symbol.uppercase()
+        }
     }
 }

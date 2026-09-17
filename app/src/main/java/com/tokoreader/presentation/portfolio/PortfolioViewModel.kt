@@ -25,6 +25,10 @@ data class PositionDisplayItem(
     val pnlPercent: Double,
     val pnlAmountQuote: Double,
     val pnlAmountIdr: Double,
+    val netPnlPercent: Double = 0.0,
+    val netPnlAmountQuote: Double = 0.0,
+    val netPnlAmountIdr: Double = 0.0,
+    val totalDeductionQuote: Double = 0.0,
     val isProfitable: Boolean
 )
 
@@ -99,9 +103,22 @@ class PortfolioViewModel(
                     val curValQuote = pos.quantity * curPrice
                     val curValIdr = if (isUsdt) curValQuote * rate else curValQuote
 
+                    val entryCostQuote = pos.averageEntryPrice * pos.quantity
                     val pnlPct = if (pos.averageEntryPrice > 0) ((curPrice - pos.averageEntryPrice) / pos.averageEntryPrice) * 100 else 0.0
                     val pnlAmtQuote = (curPrice - pos.averageEntryPrice) * pos.quantity
                     val pnlAmtIdr = if (isUsdt) pnlAmtQuote * rate else pnlAmtQuote
+
+                    // Riset Potongan Tokocrypto: Fee Beli 0.10%, Fee Jual 0.10%, PPh 22 0.10%, PPN PMK68 0.11%
+                    val buyFee = entryCostQuote * 0.0010
+                    val sellFee = curValQuote * 0.0010
+                    val pphTax = curValQuote * 0.0010
+                    val ppnTax = curValQuote * 0.0011
+                    val totalDeductionQuote = buyFee + sellFee + pphTax + ppnTax
+                    val totalDeductionIdr = if (isUsdt) totalDeductionQuote * rate else totalDeductionQuote
+
+                    val netProfitAmtQuote = (curValQuote - entryCostQuote) - totalDeductionQuote
+                    val netProfitAmtIdr = if (isUsdt) netProfitAmtQuote * rate else netProfitAmtQuote
+                    val netProfitPct = if (entryCostQuote > 0) (netProfitAmtQuote / entryCostQuote) * 100 else 0.0
 
                     PositionDisplayItem(
                         position = pos,
@@ -112,7 +129,11 @@ class PortfolioViewModel(
                         pnlPercent = pnlPct,
                         pnlAmountQuote = pnlAmtQuote,
                         pnlAmountIdr = pnlAmtIdr,
-                        isProfitable = pnlPct >= 0
+                        netPnlPercent = netProfitPct,
+                        netPnlAmountQuote = netProfitAmtQuote,
+                        netPnlAmountIdr = netProfitAmtIdr,
+                        totalDeductionQuote = totalDeductionQuote,
+                        isProfitable = netProfitPct >= 0
                     )
                 }
             }.collect { items ->

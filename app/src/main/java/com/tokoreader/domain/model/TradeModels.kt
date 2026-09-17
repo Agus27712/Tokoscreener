@@ -78,3 +78,8 @@ data class PaperBalances(
     val balanceUsdt: Double
 )
 
+sealed interface UserDataEvent {
+    data class BalanceUpdate(val assets: Map<String, Double>) : UserDataEvent
+    data class OrderFilled(val symbol: String, val side: String, val quantity: Double, val price: Double) : UserDataEvent
+}
+

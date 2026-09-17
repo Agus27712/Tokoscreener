@@ -262,6 +262,8 @@ fun LogLevelChip(
 
 @Composable
 fun LogItemRow(log: LogEntry) {
+    val isDark = MaterialTheme.colorScheme.surface.red < 0.5f
+
     val levelColor = when (log.level) {
         LogLevel.ERROR -> Color(0xFFEF5350)
         LogLevel.WARN -> Color(0xFFFF9800)
@@ -270,9 +272,21 @@ fun LogItemRow(log: LogEntry) {
     }
 
     val containerColor = when (log.level) {
-        LogLevel.ERROR -> Color(0xFFFFF1F1)
-        LogLevel.WARN -> Color(0xFFFFF9E6)
-        else -> MaterialTheme.colorScheme.surface
+        LogLevel.ERROR -> if (isDark) Color(0xFF2C1A1A) else Color(0xFFFFF1F1)
+        LogLevel.WARN -> if (isDark) Color(0xFF2E2416) else Color(0xFFFFF9E6)
+        else -> if (isDark) Color(0xFF1E1E1E) else MaterialTheme.colorScheme.surface
+    }
+
+    val tagColor = when (log.level) {
+        LogLevel.ERROR -> if (isDark) Color(0xFFFF8A80) else Color(0xFFC62828)
+        LogLevel.WARN -> if (isDark) Color(0xFFFFD180) else Color(0xFFEF6C00)
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+
+    val messageColor = when (log.level) {
+        LogLevel.ERROR -> if (isDark) Color(0xFFFFCDD2) else Color(0xFFB71C1C)
+        LogLevel.WARN -> if (isDark) Color(0xFFFFECB3) else Color(0xFFE65100)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     Column(
@@ -313,7 +327,7 @@ fun LogItemRow(log: LogEntry) {
                     text = log.tag,
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = tagColor
                 )
             }
             Text(
@@ -329,7 +343,7 @@ fun LogItemRow(log: LogEntry) {
             text = log.message,
             fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
-            color = if (log.level == LogLevel.ERROR) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurface,
+            color = messageColor,
             modifier = Modifier.fillMaxWidth()
         )
     }

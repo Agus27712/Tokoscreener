@@ -529,24 +529,40 @@ fun PositionRowItem(
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
+                    val grossFormattedAmt = if (item.quoteAsset == "USDT") {
+                        "${if (item.pnlAmountQuote >= 0) "+" else ""}$ ${String.format(Locale.US, "%.2f", item.pnlAmountQuote)}"
+                    } else {
+                        "${if (item.pnlAmountQuote >= 0) "+" else ""}Rp ${NumberFormat.getNumberInstance(Locale.US).format(item.pnlAmountQuote.toLong())}"
+                    }
+                    val netFormattedAmt = if (item.quoteAsset == "USDT") {
+                        "${if (item.netPnlAmountQuote >= 0) "+" else ""}$ ${String.format(Locale.US, "%.2f", item.netPnlAmountQuote)}"
+                    } else {
+                        "${if (item.netPnlAmountQuote >= 0) "+" else ""}Rp ${NumberFormat.getNumberInstance(Locale.US).format(item.netPnlAmountQuote.toLong())}"
+                    }
+
                     Box(
                         modifier = Modifier
                             .background(pnlColor.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
                         Text(
-                            text = "${if (item.isProfitable) "+" else ""}${String.format(Locale.US, "%.2f", item.pnlPercent)}%",
+                            text = "${if (item.netPnlPercent >= 0) "+" else ""}${String.format(Locale.US, "%.2f", item.netPnlPercent)}% Net",
                             color = pnlColor,
-                            fontSize = 12.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = CryptoUtils.formatCryptoPrice(item.position.symbol, item.currentPrice),
-                        color = Color.White,
-                        fontSize = 13.sp,
+                        text = netFormattedAmt,
+                        color = pnlColor,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Gross: ${if (item.pnlPercent >= 0) "+" else ""}${String.format(Locale.US, "%.2f", item.pnlPercent)}% ($grossFormattedAmt)",
+                        color = Color(0xFF64748B),
+                        fontSize = 9.5.sp
                     )
                 }
             }

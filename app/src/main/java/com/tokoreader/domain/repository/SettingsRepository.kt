@@ -23,4 +23,8 @@ interface SettingsRepository {
     fun getSymbolType(): Flow<Int>
     suspend fun saveSymbolType(type: Int)
     fun getCurrentSymbolType(): Int
+
+    fun getCustomWatchlistSymbols(): Flow<Set<String>>
+    suspend fun addCustomWatchlistSymbol(symbol: String)
+    suspend fun removeCustomWatchlistSymbol(symbol: String)
 }
