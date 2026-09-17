@@ -34,7 +34,8 @@ class TradeRepositoryImpl(
                     is String -> data
                     else -> "ORD-${System.currentTimeMillis()}"
                 }
-                OrderResult(orderId = orderId, status = "FILLED")
+                val finalStatus = pollOrderStatus(request.symbol, orderId)
+                OrderResult(orderId = orderId, status = finalStatus)
             } else {
                 throw Exception("Tokocrypto [${response.code}]: ${response.msg}")
             }
@@ -63,11 +64,35 @@ class TradeRepositoryImpl(
                     is String -> data
                     else -> "OCO-${System.currentTimeMillis()}"
                 }
-                OrderResult(orderId = orderId, status = "FILLED")
+                val finalStatus = pollOrderStatus(request.symbol, orderId)
+                OrderResult(orderId = orderId, status = finalStatus)
             } else {
                 throw Exception("Tokocrypto OCO [${response.code}]: ${response.msg}")
             }
         }
+    }
+
+    private suspend fun pollOrderStatus(symbol: String, orderId: String, maxAttempts: Int = 5, delayMs: Long = 1000L): String {
+        for (attempt in 1..maxAttempts) {
+            try {
+                val response = tradeApi.getOrderDetail(symbol = symbol, orderId = orderId)
+                if (response.code == 0) {
+                    val status = when (val data = response.data) {
+                        is Map<*, *> -> data["status"]?.toString() ?: "NEW"
+                        else -> "NEW"
+                    }
+                    if (status == "FILLED" || status == "CANCELED" || status == "REJECTED" || status == "EXPIRED") {
+                        return status
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore transient network errors and continue polling
+            }
+            if (attempt < maxAttempts) {
+                delay(delayMs)
+            }
+        }
+        return "NEW"
     }
 
     override suspend fun cancelOrder(symbol: String, orderId: String): Result<Boolean> {

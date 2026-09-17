@@ -14,7 +14,13 @@ class TokoReaderApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         Log.d("TokoReaderApp", "Application onCreate: Initializing DI container")
         container = AppContainer(this)
+    }
+
+    companion object {
+        lateinit var instance: TokoReaderApp
+            private set
     }
 }

@@ -19,8 +19,15 @@ import com.tokoreader.domain.repository.SettingsRepository
 import com.tokoreader.domain.repository.TradeRepository
 import com.tokoreader.domain.usecase.PlaceOrderUseCase
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okhttp3.Response
+import org.json.JSONObject
 
 data class RadarTradeUiState(
     val symbol: String = "BTCIDR",
@@ -79,9 +86,11 @@ class RadarTradeViewModel(
     private var candlesJob: Job? = null
     private var positionJob: Job? = null
     private var settingsModeJob: Job? = null
+    private var userDataStreamWebSocket: WebSocket? = null
+    private var userDataStreamJob: Job? = null
+    private var balanceObservationJob: Job? = null
 
     init {
-        observePaperBalance()
         observeSettingsMode()
         initCoin("BTCIDR")
     }
@@ -105,6 +114,15 @@ class RadarTradeViewModel(
             launch {
                 settingsRepository.getRealBuyMode().collect { isReal ->
                     _uiState.update { it.copy(isPaperMode = !isReal) }
+                    if (isReal) {
+                        balanceObservationJob?.cancel()
+                        fetchRealBalances()
+                        startUserDataStream()
+                    } else {
+                        userDataStreamWebSocket?.close(1000, "Switch to Paper")
+                        userDataStreamJob?.cancel()
+                        observePaperBalance()
+                    }
                 }
             }
         }
@@ -339,7 +357,8 @@ class RadarTradeViewModel(
     }
 
     private fun observePaperBalance() {
-        viewModelScope.launch {
+        balanceObservationJob?.cancel()
+        balanceObservationJob = viewModelScope.launch {
             paperTradeRepository.observePaperBalances().collect { balances ->
                 _uiState.update { 
                     it.copy(
@@ -349,6 +368,151 @@ class RadarTradeViewModel(
                 }
             }
         }
+    }
+
+    private fun fetchRealBalances() {
+        val state = _uiState.value
+        if (state.isPaperMode) return
+        viewModelScope.launch {
+            try {
+                val creds = settingsRepository.getApiCredentials().first()
+                if (creds.apiKey.isNotBlank() && creds.secret.isNotBlank()) {
+                    val response = TokoReaderApp.instance.container.tradeApi.getAccountInfo()
+                    if (response.code == 0) {
+                        val dataMap = response.data as? Map<*, *>
+                        val balancesList = dataMap?.get("balances") as? List<*>
+                        var realIdr = 0.0
+                        var realUsdt = 0.0
+                        balancesList?.forEach { item ->
+                            val balanceMap = item as? Map<*, *>
+                            val asset = balanceMap?.get("asset")?.toString() ?: ""
+                            val free = balanceMap?.get("free")?.toString()?.toDoubleOrNull() ?: 0.0
+                            if (asset == "BIDR" || asset == "IDR") {
+                                realIdr = free
+                            } else if (asset == "USDT") {
+                                realUsdt = free
+                            }
+                        }
+                        _uiState.update { 
+                            it.copy(
+                                paperBalanceIdr = realIdr,
+                                paperBalanceUsdt = realUsdt
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Gagal memuat saldo riil: ${e.message}")
+            }
+        }
+    }
+
+    private fun startUserDataStream() {
+        userDataStreamJob?.cancel()
+        userDataStreamWebSocket?.close(1000, "Switch mode")
+
+        val state = _uiState.value
+        if (state.isPaperMode) return
+
+        userDataStreamJob = viewModelScope.launch {
+            try {
+                val creds = settingsRepository.getApiCredentials().first()
+                if (creds.apiKey.isBlank() || creds.secret.isBlank()) return@launch
+
+                val response = TokoReaderApp.instance.container.tradeApi.createListenKey()
+                if (response.code == 0) {
+                    val listenKey = response.data
+                    val symbolType = settingsRepository.getCurrentSymbolType()
+                    val wsUrl = if (symbolType == 1) {
+                        "wss://stream-cloud.tokocrypto.site/stream?streams=$listenKey"
+                    } else {
+                        "wss://stream-toko.2meta.app?streams=$listenKey"
+                    }
+
+                    val request = Request.Builder().url(wsUrl).build()
+                    val okHttpClient = OkHttpClient.Builder().build()
+                    userDataStreamWebSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
+                        override fun onOpen(webSocket: WebSocket, response: Response) {
+                            Log.d(TAG, "User Data Stream WebSocket Connected")
+                        }
+
+                        override fun onMessage(webSocket: WebSocket, text: String) {
+                            try {
+                                val json = JSONObject(text)
+                                val eventType = json.optString("e")
+                                if (eventType == "outboundAccountPosition") {
+                                    val balancesArray = json.optJSONArray("B")
+                                    if (balancesArray != null) {
+                                        var realIdr = _uiState.value.paperBalanceIdr
+                                        var realUsdt = _uiState.value.paperBalanceUsdt
+                                        for (i in 0 until balancesArray.length()) {
+                                            val b = balancesArray.getJSONObject(i)
+                                            val asset = b.optString("a")
+                                            val free = b.optString("f").toDoubleOrNull() ?: 0.0
+                                            if (asset == "BIDR" || asset == "IDR") {
+                                                realIdr = free
+                                            } else if (asset == "USDT") {
+                                                realUsdt = free
+                                            }
+                                        }
+                                        _uiState.update {
+                                            it.copy(
+                                                paperBalanceIdr = realIdr,
+                                                paperBalanceUsdt = realUsdt
+                                            )
+                                        }
+                                    }
+                                } else if (eventType == "executionReport") {
+                                    val symbol = json.optString("s")
+                                    val side = json.optString("S")
+                                    val orderStatus = json.optString("X")
+                                    val qty = json.optString("q").toDoubleOrNull() ?: 0.0
+                                    val price = json.optString("p").toDoubleOrNull() ?: 0.0
+
+                                    if (orderStatus == "FILLED") {
+                                        viewModelScope.launch {
+                                            if (side == "BUY") {
+                                                positionRepository.savePosition(
+                                                    Position(symbol = symbol, quantity = qty, averageEntryPrice = price)
+                                                )
+                                            } else {
+                                                positionRepository.removePosition(symbol)
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Error parsing User Data Stream message: ${e.message}")
+                            }
+                        }
+
+                        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                            Log.w(TAG, "User Data Stream WS error: ${t.message}")
+                            viewModelScope.launch {
+                                delay(5000)
+                                if (!_uiState.value.isPaperMode) {
+                                    startUserDataStream()
+                                }
+                            }
+                        }
+                    })
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Gagal start User Data Stream: ${e.message}")
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        tickerJob?.cancel()
+        depthJob?.cancel()
+        candlesJob?.cancel()
+        positionJob?.cancel()
+        settingsModeJob?.cancel()
+        userDataStreamJob?.cancel()
+        balanceObservationJob?.cancel()
+        userDataStreamWebSocket?.close(1000, "Cleared")
     }
 
     fun swapCurrency(fromAsset: String, toAsset: String, amount: Double) {

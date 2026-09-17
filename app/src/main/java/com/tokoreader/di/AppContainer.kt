@@ -18,6 +18,7 @@ import com.tokoreader.domain.evaluator.DayTradingSignalEvaluator
 import com.tokoreader.domain.evaluator.ScalpingSignalEvaluator
 import com.tokoreader.domain.evaluator.SwingSignalEvaluator
 import com.tokoreader.domain.model.TradingMode
+import com.tokoreader.domain.repository.SettingsRepository
 import com.tokoreader.domain.usecase.ObserveTradingSignalUseCase
 import com.tokoreader.domain.usecase.PlaceOrderUseCase
 import okhttp3.Interceptor
@@ -27,6 +28,47 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+
+/**
+ * Interceptor that dynamically routes Market endpoints depending on the chosen symbolType (MBX vs NextMe).
+ */
+class DynamicMarketUrlInterceptor(private val settingsRepository: SettingsRepository) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val originalRequest = chain.request()
+        val symbolType = settingsRepository.getCurrentSymbolType()
+        val url = originalRequest.url
+        val host = url.host
+
+        if (host.contains("tokocrypto.site") || host.contains("2meta.app") || host.contains("binance") || host.contains("tokocrypto.com")) {
+            // Ignore account/wallet endpoints which always use www.tokocrypto.com
+            if (url.encodedPath.contains("open/v1")) {
+                return chain.proceed(originalRequest)
+            }
+
+            val newBuilder = url.newBuilder()
+            if (symbolType == 3) {
+                newBuilder.host("cloudme-toko.2meta.app")
+                val pathSegments = url.pathSegments
+                if (pathSegments.size >= 2 && pathSegments[0] == "api" && pathSegments[1] == "v3") {
+                    newBuilder.setPathSegment(1, "v1")
+                }
+            } else {
+                newBuilder.host("www.tokocrypto.site")
+                val pathSegments = url.pathSegments
+                if (pathSegments.size >= 2 && pathSegments[0] == "api" && pathSegments[1] == "v1") {
+                    newBuilder.setPathSegment(1, "v3")
+                }
+            }
+
+            val newRequest = originalRequest.newBuilder()
+                .url(newBuilder.build())
+                .build()
+            return chain.proceed(newRequest)
+        }
+
+        return chain.proceed(originalRequest)
+    }
+}
 
 /**
  * Interceptor that automatically falls back to alternative Binance / Tokocrypto hosts
@@ -100,6 +142,7 @@ class AppContainer(context: Context) {
 
     // 3. OkHttp Clients
     private val marketOkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(DynamicMarketUrlInterceptor(settingsRepository))
         .addInterceptor(FallbackHostInterceptor())
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)

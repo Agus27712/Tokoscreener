@@ -100,6 +100,9 @@ fun SettingsScreen(
     val savedRealBuyMode by settingsRepository.getRealBuyMode().collectAsState(initial = false)
     var realBuyMode by remember(savedRealBuyMode) { mutableStateOf(savedRealBuyMode) }
 
+    val savedSymbolType by settingsRepository.getSymbolType().collectAsState(initial = 1)
+    var symbolType by remember(savedSymbolType) { mutableStateOf(savedSymbolType) }
+
     // Live preference states
     var aiProvider by remember { mutableStateOf("Gemini") }
     var throttle by remember { mutableStateOf("200 ms") }
@@ -284,6 +287,47 @@ fun SettingsScreen(
                             isSelected = aiProvider == "Groq",
                             modifier = Modifier.weight(1f),
                             onClick = { aiProvider = "Groq" }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Match Engine (Symbol Type)",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Pilih tipe match engine koin di Tokocrypto: Tipe 1 (MBX) atau Tipe 3 (NextMe)",
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        ModernChip(
+                            label = "Tipe 1 (MBX)",
+                            isSelected = symbolType == 1,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                symbolType = 1
+                                coroutineScope.launch { settingsRepository.saveSymbolType(1) }
+                            }
+                        )
+                        ModernChip(
+                            label = "Tipe 3 (NextMe)",
+                            isSelected = symbolType == 3,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                symbolType = 3
+                                coroutineScope.launch { settingsRepository.saveSymbolType(3) }
+                            }
                         )
                     }
                 }

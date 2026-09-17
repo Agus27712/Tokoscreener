@@ -19,4 +19,8 @@ interface SettingsRepository {
 
     fun getAccentColor(): Flow<String>
     suspend fun saveAccentColor(color: String)
+
+    fun getSymbolType(): Flow<Int>
+    suspend fun saveSymbolType(type: Int)
+    fun getCurrentSymbolType(): Int
 }

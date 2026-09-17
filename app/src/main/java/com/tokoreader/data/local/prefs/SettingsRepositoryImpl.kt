@@ -38,6 +38,7 @@ class SettingsRepositoryImpl(private val context: Context) : SettingsRepository 
     private val APP_PIN = "app_security_pin"
     private val REAL_BUY_MODE = booleanPreferencesKey("real_buy_mode")
     private val API_CRED_UPDATE_KEY = longPreferencesKey("api_cred_updated_at")
+    private val SYMBOL_TYPE_PREF_KEY = "tokocrypto_symbol_type"
 
     override fun getApiCredentials(): Flow<ApiCredentials> = context.dataStore.data.map {
         // We trigger flow emit, but read actual secure keys from EncryptedPrefs
@@ -115,5 +116,19 @@ class SettingsRepositoryImpl(private val context: Context) : SettingsRepository 
     
     override suspend fun setRealBuyMode(enabled: Boolean) {
         context.dataStore.edit { it[REAL_BUY_MODE] = enabled }
+    }
+
+    override fun getSymbolType(): Flow<Int> = context.dataStore.data.map {
+        getCurrentSymbolType()
+    }
+
+    override suspend fun saveSymbolType(type: Int) {
+        securePrefs.edit().putInt(SYMBOL_TYPE_PREF_KEY, type).apply()
+        // Trigger a change in dataStore to emit update
+        context.dataStore.edit { it[API_CRED_UPDATE_KEY] = System.currentTimeMillis() }
+    }
+
+    override fun getCurrentSymbolType(): Int {
+        return securePrefs.getInt(SYMBOL_TYPE_PREF_KEY, 1)
     }
 }
